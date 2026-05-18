@@ -1,0 +1,6 @@
+build/
+dist/
+*.pkg
+node_modules/
+.env
+.agents/
