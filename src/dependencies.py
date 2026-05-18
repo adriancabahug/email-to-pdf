@@ -61,7 +61,7 @@ class CompositionRoot:
             email_formatter=EmailFormatter(config_manager=cfg),
             pdf_generator=pdf_gen,
             file_manager=FileManager(
-                output_base=str(self._output_base),
+                output_base=self._output_base,
                 pdf_generator=pdf_gen,
                 email_formatter=EmailFormatter(config_manager=cfg),
             ),

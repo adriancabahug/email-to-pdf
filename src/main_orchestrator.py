@@ -187,7 +187,6 @@ class MainOrchestrator:
         if success and self._session.is_connected():
             self._searcher = EmailSearcher(
                 session_manager=self._session,
-                folder_resolver=None,  # Use static methods in searcher instead
                 processed_store=self._deps.processed_store,
                 config_manager=self._config
             )

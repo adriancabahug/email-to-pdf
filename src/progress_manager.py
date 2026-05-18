@@ -119,3 +119,18 @@ class ProgressManager:
         if self._start_time is None:
             return 0.0
         return time.time() - self._start_time
+
+    # ------------------------------------------------------------------ #
+    # Aliases for the API expected by MainOrchestrator
+    # ------------------------------------------------------------------ #
+    def error(self, identifier: str, message: str) -> None:
+        self.show_error(category=identifier, message=message)
+
+    def warning(self, identifier: str, message: str) -> None:
+        self.print_warn(f"{identifier}: {message}")
+
+    def complete(self, identifier: str, path: str) -> None:
+        self.print_info(f"Completed {identifier} → {path}")
+
+    def skip(self, identifier: str, reason: str) -> None:
+        self.print_warn(f"Skipped {identifier}: {reason}")
