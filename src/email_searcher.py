@@ -45,9 +45,18 @@ class EmailSearcher:
         self._processed_store = processed_store
         self._config = config_manager
 
-    def search(self, director_email: str, mode: Optional[str] = None) -> List[Any]:
-        normalized_name = director_email.lower().strip()
-        if self._processed_store and self._processed_store.is_processed(normalized_name):
+    def search(
+        self,
+        search_terms: List[str],
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        mode: Optional[str] = None,
+    ) -> List[Any]:
+        if not search_terms:
+            return []
+
+        smsf_key = "|".join(search_terms)
+        if self._processed_store and self._processed_store.is_processed(smsf_key):
             return []
 
         if not self._session:
@@ -57,28 +66,37 @@ class EmailSearcher:
             mode = self._config.get("search.default_mode", "fast") if self._config else "fast"
 
         if mode == "deep":
-            return self._search(director_email, _DeepFolderStrategy())
-        return self._search(director_email, _FastFolderStrategy())
+            return self._search(search_terms, start_date, end_date, _DeepFolderStrategy())
+        return self._search(search_terms, start_date, end_date, _FastFolderStrategy())
 
-    def _search(self, director_email: str, strategy: FolderStrategy) -> List[Any]:
+    def _search(
+        self,
+        search_terms: List[str],
+        start_date: Optional[datetime],
+        end_date: Optional[datetime],
+        strategy: FolderStrategy,
+    ) -> List[Any]:
         if not self._session:
             raise RuntimeError("No session manager provided")
 
-        date_cutoff = self._get_date_cutoff()
         results: List[Any] = []
+        seen_ids = set()
 
         for folder in self._iter_folders(strategy):
             try:
-                restrict_query = self._build_restrict_query(director_email, date_cutoff)
+                restrict_query = self._build_restrict_query(search_terms, start_date, end_date)
                 items = folder.Items
                 restricted = items.Restrict(restrict_query) if restrict_query else items
                 restricted.Sort("[ReceivedTime]", True)
                 for msg in restricted:
-                    if self._phase2_validate(msg, director_email):
+                    entry_id = getattr(msg, "EntryID", None)
+                    if entry_id and entry_id not in seen_ids:
+                        seen_ids.add(entry_id)
                         results.append(msg)
             except Exception as exc:
                 logger.debug("Folder search skipped: %s", exc)
 
+        results.sort(key=lambda m: getattr(m, "ReceivedTime", datetime.min))
         return results
 
     def _iter_folders(self, strategy: FolderStrategy):
@@ -105,12 +123,30 @@ class EmailSearcher:
         except Exception as exc:
             logger.debug("Folder iteration skipped: %s", exc)
 
-    def _build_restrict_query(self, director_email: str, date_cutoff: Optional[datetime]) -> str:
-        safe_email = director_email.replace("'", "''")
-        parts = [f"[SenderEmailAddress] = '{safe_email}'"]
-        if date_cutoff:
-            date_str = date_cutoff.strftime("%m/%d/%Y")
-            parts.append(f"[ReceivedTime] >= '{date_str}'")
+    def _build_restrict_query(
+        self,
+        search_terms: List[str],
+        start_date: Optional[datetime],
+        end_date: Optional[datetime],
+    ) -> str:
+        keyword_conditions = []
+        for kw in search_terms:
+            safe = kw.replace("'", "''")
+            keyword_conditions.append(f"[SenderEmailAddress] LIKE '%{safe}%'")
+            keyword_conditions.append(f"[To] LIKE '%{safe}%'")
+            keyword_conditions.append(f"[CC] LIKE '%{safe}%'")
+            keyword_conditions.append(f"[BCC] LIKE '%{safe}%'")
+            keyword_conditions.append(f"[Subject] LIKE '%{safe}%'")
+
+        parts = [f"({' OR '.join(keyword_conditions)})"]
+
+        if start_date:
+            start_str = start_date.strftime("%m/%d/%Y %I:%M %p")
+            parts.append(f"[ReceivedTime] >= '{start_str}'")
+        if end_date:
+            end_str = end_date.strftime("%m/%d/%Y %I:%M %p")
+            parts.append(f"[ReceivedTime] <= '{end_str}'")
+
         return " AND ".join(parts)
 
     def _phase2_validate(self, message: Any, director_email: str) -> bool:

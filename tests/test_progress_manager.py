@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from io import StringIO
+import sys
 
 from src.progress_manager import ProgressManager
 from src.config_manager import ConfigManager
@@ -177,3 +178,42 @@ class TestProgressManagerElapsed:
         import time
         time.sleep(0.01)
         assert pm._elapsed() > 0
+
+
+class TestRichProgressBar:
+    """Rich progress bar integration"""
+
+    def test_start_initializes_progress_with_total(self, tmp_path, monkeypatch):
+        """start() should initialize progress bar with folder count"""
+        monkeypatch.setattr(ConfigManager, "_get_appdata_dir", lambda: tmp_path / "EmailToPDF")
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+        cm = ConfigManager.load()
+        pm = ProgressManager(cm)
+
+        pm.start("Aura Super", folder_count=10)
+
+        assert pm._progress is not None
+        assert pm._task is not None
+
+    def test_update_activity_advances_progress(self, tmp_path, monkeypatch):
+        """update_activity() should advance the progress bar"""
+        monkeypatch.setattr(ConfigManager, "_get_appdata_dir", lambda: tmp_path / "EmailToPDF")
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: True)
+        cm = ConfigManager.load()
+        pm = ProgressManager(cm)
+
+        pm.start("Aura Super", folder_count=10)
+        pm.update_activity("Inbox")
+
+        assert pm._folders_scanned == 1
+
+    def test_progress_hidden_when_not_tty(self, tmp_path, monkeypatch):
+        """Progress bar should not show when stdout is not a TTY"""
+        monkeypatch.setattr(ConfigManager, "_get_appdata_dir", lambda: tmp_path / "EmailToPDF")
+        monkeypatch.setattr(sys.stdout, "isatty", lambda: False)
+        cm = ConfigManager.load()
+        pm = ProgressManager(cm)
+
+        pm.start("Aura Super", folder_count=10)
+
+        assert pm._progress is None

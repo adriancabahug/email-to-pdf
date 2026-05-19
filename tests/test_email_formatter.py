@@ -258,3 +258,51 @@ class TestFormatDate:
         assert "May 17, 2026" in html
         assert "9:25 PM" in html
         assert "2026-05-17" not in html
+
+
+class TestMultipleEmailsWithHeaderBanners:
+    """Test format_multiple_emails with header banners and page breaks"""
+
+    def test_format_multiple_emails_adds_header_banner(self):
+        """Each email should have a header banner with index, from, to, date, subject"""
+        formatter = EmailFormatter()
+        emails = [
+            MockEmail(Subject="Email 1", SenderEmailAddress="alice@test.com", To="bob@test.com", SentOn="2025-01-15"),
+            MockEmail(Subject="Email 2", SenderEmailAddress="charlie@test.com", To="dave@test.com", SentOn="2025-01-16"),
+        ]
+
+        html = formatter.format_multiple_emails(emails)
+
+        assert "Email 1 of 2" in html
+        assert "Email 2 of 2" in html
+        assert "alice@test.com" in html
+        assert "bob@test.com" in html
+
+    def test_format_multiple_emails_has_page_breaks(self):
+        """Each email should start on a new page"""
+        formatter = EmailFormatter()
+        emails = [
+            MockEmail(Subject="Email 1"),
+            MockEmail(Subject="Email 2"),
+            MockEmail(Subject="Email 3"),
+        ]
+
+        html = formatter.format_multiple_emails(emails)
+
+        assert "page-break-before: always" in html
+
+    def test_format_multiple_emails_chronological_order(self):
+        """Emails should appear in chronological order (oldest first)"""
+        formatter = EmailFormatter()
+        emails = [
+            MockEmail(Subject="Third", SentOn="2025-03-01"),
+            MockEmail(Subject="First", SentOn="2025-01-01"),
+            MockEmail(Subject="Second", SentOn="2025-02-01"),
+        ]
+
+        html = formatter.format_multiple_emails(emails)
+
+        first_pos = html.find("First")
+        second_pos = html.find("Second")
+        third_pos = html.find("Third")
+        assert first_pos < second_pos < third_pos

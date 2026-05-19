@@ -32,11 +32,9 @@ class FileManager:
         """Get the base output directory"""
         return self.output_base
 
-    def generate_filename(self, first_name: str, last_name: str, smsf_name: str) -> str:
-        """Generate filename in format: {First Last} - {SMSF}.pdf"""
-        full_name = f"{first_name} {last_name}"
-        smsf = smsf_name if smsf_name else ""
-        return f"{full_name} - {smsf}.pdf"
+    def generate_filename(self, smsf_name: str) -> str:
+        """Generate filename in format: {SMSF} - Email Export.pdf"""
+        return f"{smsf_name} - Email Export.pdf"
 
     def create_smsf_folder(self, smsf_name: str) -> Path:
         """Create folder for SMSF. Returns folder path as Path."""
@@ -60,8 +58,6 @@ class FileManager:
     def save_pdf(
         self,
         html_content: str,
-        first_name: str,
-        last_name: str,
         smsf_name: str,
     ) -> Optional[str]:
         """
@@ -69,7 +65,7 @@ class FileManager:
         Returns full path string if successful, None otherwise.
         """
         try:
-            filename = self.generate_filename(first_name, last_name, smsf_name)
+            filename = self.generate_filename(smsf_name)
             self.create_smsf_folder(smsf_name)
             full_path = self.get_full_path(smsf_name, filename)
 

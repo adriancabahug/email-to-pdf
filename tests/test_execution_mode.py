@@ -19,21 +19,23 @@ class TestExecutionContext:
     def test_execution_context_has_required_fields(self):
         ctx = ExecutionContext(
             mode=ExecutionMode.BATCH,
-            directors=[],
+            smsf_entries=[],
             output_dir=None
         )
         assert ctx.mode == ExecutionMode.BATCH
-        assert ctx.directors == []
+        assert ctx.smsf_entries == []
 
     def test_execution_context_dataclass(self):
+        from src.cli import SMSFEntry
+        from datetime import datetime
         ctx = ExecutionContext(
             mode=ExecutionMode.INTERACTIVE,
-            directors=[{"first": "John", "last": "Doe", "smsf": "Test"}],
+            smsf_entries=[SMSFEntry(smsf="Test", search_terms=["term1"], start_date=datetime(2025,1,1), end_date=datetime(2025,12,31))],
             output_dir=None,
             verbose=True
         )
         assert ctx.mode == ExecutionMode.INTERACTIVE
-        assert len(ctx.directors) == 1
+        assert len(ctx.smsf_entries) == 1
         assert ctx.verbose is True
 
 

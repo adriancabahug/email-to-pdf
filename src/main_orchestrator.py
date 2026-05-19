@@ -20,7 +20,7 @@ from src.file_manager import FileManager
 from src.license_validator import LicenseValidator
 from src.progress_manager import ProgressManager
 from src.pdf_generator import PDFGenerator, PDFSession
-from src.cli import CLI, ExecutionContext, ExecutionMode
+from src.cli import CLI, ExecutionContext, ExecutionMode, SMSFEntry
 from src.exceptions import LicenseInputUnavailableError, OutlookUnavailableError
 from src.dependencies import Dependencies, CompositionRoot
 
@@ -34,10 +34,11 @@ def _get_default_output_base() -> Path:
 
 
 @dataclass(frozen=True)
-class DirectorContext:
-    first_name: str
-    last_name: str
+class SMSFContext:
     smsf: str
+    search_terms: list
+    start_date: any
+    end_date: any
     mode: str
     skip_if_processed: bool = True
 
@@ -95,11 +96,9 @@ class MainOrchestrator:
     # Mode runners
     # ------------------------------------------------------------------ #
     def _run_batch(self) -> int:
-        directors = self._context.directors
-        if not directors:
-            directors = self._config.get("directors", [])
-        if not directors:
-            self._progress.print_warn("No directors configured for batch mode.")
+        smsf_entries = self._context.smsf_entries
+        if not smsf_entries:
+            self._progress.print_warn("No SMSF entries configured for batch mode.")
             return 0
 
         if not self._connect_to_outlook():
@@ -107,15 +106,16 @@ class MainOrchestrator:
             return 1
 
         failed = 0
-        for director in directors:
-            ctx = DirectorContext(
-                first_name=director.get("first", director.get("first_name", "")),
-                last_name=director.get("last", director.get("last_name", "")),
-                smsf=director.get("smsf", ""),
+        for entry in smsf_entries:
+            ctx = SMSFContext(
+                smsf=entry.smsf,
+                search_terms=entry.search_terms,
+                start_date=entry.start_date,
+                end_date=entry.end_date,
                 mode="batch",
                 skip_if_processed=True,
             )
-            failed += self._process_director(ctx)
+            failed += self._process_smsf(ctx)
 
         return failed
 
@@ -128,19 +128,20 @@ class MainOrchestrator:
 
         while True:
             try:
-                user_input = self._cli.get_director_input()
-            except ValueError:
-                self._progress.print_warn("First name and last name are required.")
+                user_input = self._cli.get_smsf_input()
+            except ValueError as e:
+                self._progress.print_warn(str(e))
                 continue
 
-            ctx = DirectorContext(
-                first_name=user_input["first"],
-                last_name=user_input["last"],
-                smsf=user_input.get("smsf", ""),
+            ctx = SMSFContext(
+                smsf=user_input["smsf"],
+                search_terms=user_input["search_terms"],
+                start_date=user_input["start_date"],
+                end_date=user_input["end_date"],
                 mode="interactive",
                 skip_if_processed=False,
             )
-            failed += self._process_director(ctx)
+            failed += self._process_smsf(ctx)
 
             if not self._cli.prompt_continue():
                 break
@@ -150,31 +151,25 @@ class MainOrchestrator:
     # ------------------------------------------------------------------ #
     # Unified pipeline
     # ------------------------------------------------------------------ #
-    def _process_director(self, ctx: DirectorContext) -> int:
+    def _process_smsf(self, ctx: SMSFContext) -> int:
         try:
             if ctx.skip_if_processed and self._store.is_processed(ctx.smsf):
                 self._progress.skip(ctx.smsf, "Already processed")
                 return 0
 
-            full_name = f"{ctx.first_name} {ctx.last_name}"
-            self._progress.start(full_name)
+            self._progress.start(ctx.smsf)
 
-            email = self._session.discover_email_from_name(ctx.first_name, ctx.last_name)
-            if not email:
-                self._progress.error(ctx.smsf, "No Outlook identity found")
-                return 1
-
-            emails = self._searcher.search(email)
+            emails = self._searcher.search(ctx.search_terms, ctx.start_date, ctx.end_date)
             if not emails:
                 self._progress.warning(ctx.smsf, "No emails matched criteria")
                 self._store.mark_processed(ctx.smsf)
                 return 0
 
             html = self._email_formatter.format_multiple_emails(emails)
-            path = self._file_mgr.save_pdf(html, ctx.first_name, ctx.last_name, ctx.smsf)
+            path = self._file_mgr.save_pdf(html, ctx.smsf)
 
             if not path:
-                self._progress.error(ctx.smsf, "PDF generation failed — director not marked processed")
+                self._progress.error(ctx.smsf, "PDF generation failed — SMSF not marked processed")
                 return 1
 
             self._store.mark_processed(ctx.smsf)

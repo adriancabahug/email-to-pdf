@@ -205,10 +205,41 @@ class EmailFormatter:
         return '\n'.join(html_parts)
 
     def format_multiple_emails(self, emails: List[Any]) -> str:
+        def get_sort_key(email):
+            sent_on = getattr(email, "SentOn", None)
+            if sent_on is None:
+                return datetime.min
+            if isinstance(sent_on, datetime):
+                return sent_on
+            try:
+                return datetime.fromisoformat(str(sent_on).split('+')[0])
+            except Exception:
+                return datetime.min
+
+        sorted_emails = sorted(emails, key=get_sort_key)
+
         html_parts = []
-        for email in emails:
+        total = len(sorted_emails)
+
+        for idx, email in enumerate(sorted_emails, 1):
+            sender = getattr(email, "SenderEmailAddress", "") or ""
+            to = getattr(email, "To", "") or ""
+            subject = getattr(email, "Subject", "") or ""
+            sent_on = getattr(email, "SentOn", "")
+            date_str = self._format_date(sent_on)
+
+            banner_style = "page-break-before: auto" if idx == 1 else "page-break-before: always"
+
+            banner = f'''<div style="border-bottom: 2px solid #333; padding: 10px 0; margin-bottom: 20px; {banner_style};">
+    <strong>Email {idx} of {total}</strong> |
+    <strong>From:</strong> {sender} |
+    <strong>To:</strong> {to} |
+    <strong>Date:</strong> {date_str} |
+    <strong>Subject:</strong> {subject}
+</div>'''
+
             email_html = self.format_email(email)
-            html_parts.append(email_html)
+            html_parts.append(banner + email_html)
 
         return f"""<!DOCTYPE html>
 <html>

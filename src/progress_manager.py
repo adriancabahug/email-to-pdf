@@ -1,5 +1,6 @@
 """ProgressManager - Rich CLI abstraction for operator-facing output."""
 
+import sys
 import time
 from typing import Optional, List, Dict, Any
 from rich.console import Console
@@ -18,6 +19,8 @@ class ProgressManager:
         self._console = Console()
         self._verbose = False
         self._live: Optional[Live] = None
+        self._progress: Optional[Progress] = None
+        self._task: Optional[Any] = None
         self._start_time: Optional[float] = None
         self._current_activity = ""
         self._accounts_scanned = 0
@@ -35,7 +38,7 @@ class ProgressManager:
     def set_verbose(self, enabled: bool) -> None:
         self._verbose = enabled
 
-    def start(self, director_name: str) -> None:
+    def start(self, identifier: str, folder_count: Optional[int] = None) -> None:
         self._start_time = time.time()
         self._accounts_scanned = 0
         self._folders_scanned = 0
@@ -43,13 +46,31 @@ class ProgressManager:
         self._matches_found = 0
         self._pdfs_generated = 0
         self._failures = 0
-        self._console.print(f"\n[bold blue]Processing:[/bold blue] {director_name}")
+
+        if folder_count is not None and sys.stdout.isatty():
+            self._progress = Progress(
+                BarColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                TimeElapsedColumn(),
+                console=self._console,
+            )
+            self._progress.start()
+            self._task = self._progress.add_task(f"Searching {identifier}...", total=folder_count)
+        else:
+            self._progress = None
+            self._task = None
+
+        self._console.print(f"\n[bold blue]Processing:[/bold blue] {identifier}")
 
     def update_activity(self, folder_name: str, emails_found: int = 0, matches_found: int = 0) -> None:
         self._current_activity = folder_name
         self._emails_found += emails_found
         self._matches_found += matches_found
         self._folders_scanned += 1
+
+        if self._progress and self._task is not None:
+            self._progress.update(self._task, description=f"Searching {folder_name}")
+            self._progress.advance(self._task)
 
         elapsed = self._elapsed()
         status = f"[cyan]{folder_name}[/cyan]"
