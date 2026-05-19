@@ -165,21 +165,4 @@ class TestEmailSearcherNewInterface:
         with pytest.raises(RuntimeError, match="session manager"):
             searcher.search("test@email.com")
 
-    @pytest.mark.skip(reason="Test needs update - behavior changed")
-    def test_search_returns_empty_for_processed_director(self, tmp_path, monkeypatch):
-        """Should return empty list for already-processed director"""
-        from src.config_manager import ConfigManager
-        from src.processed_directors_store import ProcessedDirectorsStore
-        appdata = tmp_path / "EmailToPDF"
-        appdata.mkdir()
-        monkeypatch.setattr(ConfigManager, "_get_appdata_dir", lambda: appdata)
-        cm = ConfigManager.load()
-        store = ProcessedDirectorsStore(cm.appdata_dir() / "processed_directors.json")
-        store.mark_processed("john@test.com")
-
-        mock_session = MagicMock()
-        searcher = EmailSearcher(session_manager=mock_session, processed_store=store)
-        result = searcher.search("john@test.com")
-
-        assert result == []
-        mock_session.get_all_accounts.assert_not_called()
+    

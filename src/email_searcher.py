@@ -149,17 +149,6 @@ class EmailSearcher:
 
         return " AND ".join(parts)
 
-    def _phase2_validate(self, message: Any, director_email: str) -> bool:
-        try:
-            email_lower = director_email.lower().strip()
-            to_field = str(getattr(message, "To", "") or "").lower()
-            cc_field = str(getattr(message, "CC", "") or "").lower()
-            sender = str(getattr(message, "SenderEmailAddress", "") or "").lower()
-            return email_lower in sender or email_lower in to_field or email_lower in cc_field
-        except Exception as exc:
-            logger.debug("Phase2 validation skipped: %s", exc)
-            return False
-
     def _get_date_cutoff(self) -> Optional[datetime]:
         if not self._config:
             return None
@@ -168,6 +157,7 @@ class EmailSearcher:
             return None
         return datetime.now() - timedelta(days=int(days))
 
-    def mark_processed(self, director_email: str) -> None:
+    def mark_processed(self, smsf_key: str) -> None:
+        """Mark an SMSF as processed to skip in future runs."""
         if self._processed_store:
-            self._processed_store.mark_processed(director_email)
+            self._processed_store.mark_processed(smsf_key)

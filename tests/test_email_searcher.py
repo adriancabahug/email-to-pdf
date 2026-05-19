@@ -51,24 +51,6 @@ class TestEmailSearcher:
         result = searcher.search("alice@example.com", mode="deep")
         assert result == []
 
-    def test_phase2_validate_matches_sender(self):
-        mock_session = MagicMock()
-        searcher = EmailSearcher(session_manager=mock_session)
-        mail = MagicMock()
-        mail.SenderEmailAddress = "alice@example.com"
-        mail.To = ""
-        mail.CC = ""
-        assert searcher._phase2_validate(mail, "alice@example.com") is True
-
-    def test_phase2_validate_no_match(self):
-        mock_session = MagicMock()
-        searcher = EmailSearcher(session_manager=mock_session)
-        mail = MagicMock()
-        mail.SenderEmailAddress = "bob@example.com"
-        mail.To = ""
-        mail.CC = ""
-        assert searcher._phase2_validate(mail, "alice@example.com") is False
-
     def test_build_restrict_query_escapes_quotes(self):
         mock_session = MagicMock()
         searcher = EmailSearcher(session_manager=mock_session)
