@@ -11,7 +11,9 @@ class TestStdinGuard:
             assert CLI._stdin_available() is True
 
     def test_stdin_available_returns_false_when_stdin_none(self):
-        with patch("sys.stdin", None):
+        mock_stdin = MagicMock()
+        mock_stdin.isatty.side_effect = AttributeError()
+        with patch("sys.stdin", mock_stdin):
             assert CLI._stdin_available() is False
 
     def test_stdin_available_returns_false_when_isatty_false(self):
@@ -26,7 +28,9 @@ class TestStdinGuard:
             assert CLI._stdin_available() is False
 
     def test_require_stdin_raises_when_unavailable(self):
-        with patch("sys.stdin", None):
+        mock_stdin = MagicMock()
+        mock_stdin.isatty.side_effect = AttributeError()
+        with patch("sys.stdin", mock_stdin):
             with pytest.raises(RuntimeError) as exc_info:
                 CLI.require_stdin("test operation")
             assert "test operation" in str(exc_info.value)
@@ -43,8 +47,9 @@ class TestStdinGuard:
             CLI.require_stdin("test")
 
     def test_require_stdin_message_contains_operation(self):
-        with patch("sys.stdin", None):
-            try:
+        mock_stdin = MagicMock()
+        mock_stdin.isatty.side_effect = AttributeError()
+        with patch("sys.stdin", mock_stdin):
+            with pytest.raises(RuntimeError) as exc_info:
                 CLI.require_stdin("continue prompt")
-            except RuntimeError as e:
-                assert "continue prompt" in str(e)
+            assert "continue prompt" in str(exc_info.value)

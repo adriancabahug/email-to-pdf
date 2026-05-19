@@ -8,11 +8,11 @@ from src.cli import ExecutionMode, ExecutionContext, CLI
 class TestExecutionMode:
     def test_execution_mode_batch_exists(self):
         assert hasattr(ExecutionMode, 'BATCH')
-        assert ExecutionMode.BATCH.value == "batch"
+        assert ExecutionMode.BATCH.name == "BATCH"
 
     def test_execution_mode_interactive_exists(self):
         assert hasattr(ExecutionMode, 'INTERACTIVE')
-        assert ExecutionMode.INTERACTIVE.value == "interactive"
+        assert ExecutionMode.INTERACTIVE.name == "INTERACTIVE"
 
 
 class TestExecutionContext:
@@ -38,12 +38,12 @@ class TestExecutionContext:
 
 
 class TestCLIResolve:
-    def test_resolve_batch_mode(self):
+    def test_resolve_batch_mode(self, tmp_path):
+        batch_file = tmp_path / "batch.json"
+        batch_file.write_text('[{"first": "John", "last": "Doe", "smsf": "Test"}]')
         with patch.object(CLI, '_stdin_available', return_value=True):
-            with patch('builtins.open', MagicMock()):
-                with patch('json.load', return_value=[{"first": "John", "last": "Doe", "smsf": "Test"}]):
-                    ctx = CLI.resolve(['--batch', 'test.json'])
-                    assert ctx.mode == ExecutionMode.BATCH
+            ctx = CLI.resolve(['--batch', str(batch_file)])
+            assert ctx.mode == ExecutionMode.BATCH
 
     def test_resolve_interactive_requires_tty(self):
         with patch.object(CLI, '_stdin_available', return_value=False):

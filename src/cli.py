@@ -97,7 +97,10 @@ class CLI:
     # ------------------------------------------------------------------ #
     @staticmethod
     def _stdin_available() -> bool:
-        return sys.stdin.isatty()
+        try:
+            return sys.stdin.isatty()
+        except (AttributeError, OSError):
+            return False
 
     @staticmethod
     def require_stdin(operation: str) -> None:

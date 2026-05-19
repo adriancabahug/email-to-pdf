@@ -1,7 +1,15 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, Mock
+from pathlib import Path
 import os
 from src.file_manager import FileManager
+
+
+def make_mock_file_manager(output_base="C:/Output"):
+    """Create FileManager with mocked dependencies"""
+    mock_pdf = Mock()
+    mock_formatter = Mock()
+    return FileManager(mock_pdf, mock_formatter, output_base=output_base)
 
 
 class TestFileManager:
@@ -9,18 +17,20 @@ class TestFileManager:
 
     def test_get_output_base_path_returns_configured_path(self):
         """Should return the configured output base path"""
-        manager = FileManager(output_base="C:/Output/Folder")
-        assert manager.get_output_base() == "C:/Output/Folder"
+        manager = make_mock_file_manager(output_base="C:/Output/Folder")
+        assert manager.get_output_base() == Path("C:/Output/Folder")
 
     def test_get_output_base_uses_default_when_not_specified(self):
         """Should use default path when not specified"""
-        manager = FileManager()
+        mock_pdf = Mock()
+        mock_formatter = Mock()
+        manager = FileManager(mock_pdf, mock_formatter)
         default_path = manager.get_output_base()
-        assert "EmailPDFs" in default_path
+        assert "EmailPDFs" in str(default_path)
 
     def test_generate_filename_creates_correct_format(self):
         """Should create filename in format: {First Last} - {SMSF}.pdf"""
-        manager = FileManager()
+        manager = make_mock_file_manager()
         filename = manager.generate_filename("John", "Smith", "Test SMSF")
 
         assert "John Smith" in filename
@@ -29,47 +39,44 @@ class TestFileManager:
 
     def test_generate_filename_handles_empty_smsf(self):
         """Should handle empty SMSF name"""
-        manager = FileManager()
+        manager = make_mock_file_manager()
         filename = manager.generate_filename("John", "Smith", "")
 
         assert "John Smith" in filename
         assert "- .pdf" in filename or " -.pdf" in filename
 
-    @patch('os.makedirs')
-    def test_create_smsf_folder_creates_directory(self, mock_makedirs):
+    @patch('pathlib.Path.mkdir')
+    def test_create_smsf_folder_creates_directory(self, mock_mkdir):
         """Should create SMSF folder"""
-        manager = FileManager(output_base="C:/Output")
+        manager = make_mock_file_manager(output_base="C:/Output")
         manager.create_smsf_folder("Test SMSF")
 
-        mock_makedirs.assert_called()
+        mock_mkdir.assert_called()
 
     @patch('os.path.exists', return_value=True)
     @patch('builtins.open', create=True)
     @patch('os.makedirs')
     def test_save_pdf_copies_html_to_pdf_path(self, mock_makedirs, mock_open, mock_exists):
         """Should save HTML to PDF path"""
-        manager = FileManager(output_base="C:/Output")
+        manager = make_mock_file_manager(output_base="C:/Output")
+        manager.pdf_generator.generate_pdf = Mock(return_value=True)
+        result = manager.save_pdf("<html>test</html>", "John", "Smith", "Test SMSF")
 
-        from src.pdf_generator import PDFGenerator
-        with patch.object(PDFGenerator, 'generate_pdf', return_value=True):
-            result = manager.save_pdf("<html>test</html>", "John Smith", "Test SMSF", "C:/temp/test.pdf")
-
-            assert result is True or result is not None
+        assert result is not None
 
     def test_get_full_path_returns_correct_path(self):
         """Should return full path including folder and filename"""
-        manager = FileManager(output_base="C:/Output")
+        manager = make_mock_file_manager(output_base="C:/Output")
         path = manager.get_full_path("Test SMSF", "John Smith- Test SMSF.pdf")
 
-        assert "Test SMSF" in path
-        assert "John Smith- Test SMSF.pdf" in path
+        assert "Test SMSF" in str(path)
+        assert "John Smith- Test SMSF.pdf" in str(path)
 
-    @patch('os.path.exists', return_value=False)
-    @patch('os.makedirs')
-    def test_ensure_folder_exists_creates_when_missing(self, mock_makedirs, mock_exists):
+    @patch('pathlib.Path.mkdir')
+    def test_ensure_folder_exists_creates_when_missing(self, mock_mkdir):
         """Should create folder when it doesn't exist"""
-        manager = FileManager(output_base="C:/Output")
+        manager = make_mock_file_manager(output_base="C:/Output")
         result = manager.ensure_folder_exists("C:/Output/NewFolder")
 
         assert result is True
-        mock_makedirs.assert_called()
+        mock_mkdir.assert_called()
