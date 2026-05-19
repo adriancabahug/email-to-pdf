@@ -1,11 +1,14 @@
 """EmailSearcher - Restrict()-based search with pluggable folder strategy."""
 
+import logging
 from datetime import datetime, timedelta
 from typing import Any, List, Optional, Protocol
 
 from src.outlook_session_manager import OutlookSessionManager
 from src.processed_directors_store import ProcessedDirectorsStore
 from src.config_manager import ConfigManager
+
+logger = logging.getLogger(__name__)
 
 
 class FolderStrategy(Protocol):
@@ -73,8 +76,8 @@ class EmailSearcher:
                 for msg in restricted:
                     if self._phase2_validate(msg, director_email):
                         results.append(msg)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Folder search skipped: %s", exc)
 
         return results
 
@@ -86,8 +89,8 @@ class EmailSearcher:
                 yield account
             try:
                 yield from self._walk_folders(account.Folders, strategy)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("Account folder walk skipped: %s", exc)
 
     def _walk_folders(self, parent, strategy: FolderStrategy):
         try:
@@ -97,13 +100,14 @@ class EmailSearcher:
                     yield folder
                 try:
                     yield from self._walk_folders(folder.Folders, strategy)
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as exc:
+                    logger.debug("Subfolder walk skipped: %s", exc)
+        except Exception as exc:
+            logger.debug("Folder iteration skipped: %s", exc)
 
     def _build_restrict_query(self, director_email: str, date_cutoff: Optional[datetime]) -> str:
-        parts = [f"[SenderEmailAddress] = '{director_email}'"]
+        safe_email = director_email.replace("'", "''")
+        parts = [f"[SenderEmailAddress] = '{safe_email}'"]
         if date_cutoff:
             date_str = date_cutoff.strftime("%m/%d/%Y")
             parts.append(f"[ReceivedTime] >= '{date_str}'")
@@ -116,7 +120,8 @@ class EmailSearcher:
             cc_field = str(getattr(message, "CC", "") or "").lower()
             sender = str(getattr(message, "SenderEmailAddress", "") or "").lower()
             return email_lower in sender or email_lower in to_field or email_lower in cc_field
-        except Exception:
+        except Exception as exc:
+            logger.debug("Phase2 validation skipped: %s", exc)
             return False
 
     def _get_date_cutoff(self) -> Optional[datetime]:

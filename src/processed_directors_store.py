@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Set
 
@@ -57,7 +58,7 @@ class ProcessedDirectorsStore:
 
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self._path.with_suffix(".tmp")
+        temp = self._path.with_suffix(f".tmp.{uuid.uuid4().hex}")
         temp.write_text(
             json.dumps(sorted(self._cache), indent=2),
             encoding="utf-8",

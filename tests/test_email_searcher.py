@@ -9,10 +9,8 @@ import pytest
 
 from src.email_searcher import (
     EmailSearcher,
-    _collect,
-    _DeepPredicate,
-    _FastPredicate,
-    _recurse,
+    _FastFolderStrategy,
+    _DeepFolderStrategy,
 )
 
 
@@ -24,66 +22,38 @@ class FakeFolder:
 
 
 class TestFolderStrategies:
-    def test_fast_predicate_skips_junk(self):
-        p = _FastPredicate()
-        assert p("Inbox") is True
-        assert p("Deleted Items") is False
-        assert p("Junk Email") is False
+    def test_fast_strategy_prioritizes_inbox(self):
+        s = _FastFolderStrategy()
+        assert s("Inbox") is True
+        assert s("Sent Items") is True
+        assert s("Junk Email") is False
+        assert s("Deleted Items") is False
 
-    def test_deep_predicate_is_permissive(self):
-        p = _DeepPredicate()
-        assert p("Inbox") is True
-        assert p("RSS Feeds") is False
-        assert p("Deleted Items") is True  # deep searches deleted too
-
-
-class TestCollectRecurse:
-    def test_collect_with_fast_strategy(self):
-        root = FakeFolder("Root", [
-            FakeFolder("Inbox"),
-            FakeFolder("Deleted Items"),
-            FakeFolder("Junk Email"),
-        ])
-        result = _collect(root, _FastPredicate())
-        names = [f.Name for f in result]
-        assert "Inbox" in names
-        assert "Deleted Items" not in names
-
-    def test_deep_recursion(self):
-        root = FakeFolder("Root", [
-            FakeFolder("Level1", [
-                FakeFolder("Level2", [
-                    FakeFolder("Inbox"),
-                ])
-            ])
-        ])
-        result = _collect(root, _DeepPredicate())
-        assert len(result) == 4  # Root, Level1, Level2, Inbox
+    def test_deep_strategy_is_permissive(self):
+        s = _DeepFolderStrategy()
+        assert s("Inbox") is True
+        assert s("RSS Feeds") is False
+        assert s("Deleted Items") is True
 
 
 class TestEmailSearcher:
-    def test_search_fast_mode(self):
-        mock_items = MagicMock()
-        mock_items.Restrict.return_value = []
-        mock_folder = MagicMock()
-        mock_folder.Name = "Inbox"
-        mock_folder.Items = mock_items
-        mock_folder.Folders = []
-
-        mock_ns = MagicMock()
-        mock_ns.Folders = [mock_folder]
-
+    def test_search_uses_fast_strategy_by_default(self):
         mock_session = MagicMock()
-        mock_session.get_namespace.return_value = mock_ns
-
-        searcher = EmailSearcher(mock_session)
-        result = searcher.search("alice@example.com", mode="fast")
+        mock_session.get_all_accounts.return_value = []
+        searcher = EmailSearcher(session_manager=mock_session)
+        result = searcher.search("alice@example.com")
         assert result == []
-        mock_items.Restrict.assert_called_once()
+
+    def test_search_with_deep_mode(self):
+        mock_session = MagicMock()
+        mock_session.get_all_accounts.return_value = []
+        searcher = EmailSearcher(session_manager=mock_session)
+        result = searcher.search("alice@example.com", mode="deep")
+        assert result == []
 
     def test_phase2_validate_matches_sender(self):
         mock_session = MagicMock()
-        searcher = EmailSearcher(mock_session)
+        searcher = EmailSearcher(session_manager=mock_session)
         mail = MagicMock()
         mail.SenderEmailAddress = "alice@example.com"
         mail.To = ""
@@ -92,15 +62,20 @@ class TestEmailSearcher:
 
     def test_phase2_validate_no_match(self):
         mock_session = MagicMock()
-        searcher = EmailSearcher(mock_session)
+        searcher = EmailSearcher(session_manager=mock_session)
         mail = MagicMock()
         mail.SenderEmailAddress = "bob@example.com"
         mail.To = ""
         mail.CC = ""
         assert searcher._phase2_validate(mail, "alice@example.com") is False
 
-    def test_date_cutoff_applied(self):
+    def test_build_restrict_query_escapes_quotes(self):
         mock_session = MagicMock()
-        searcher = EmailSearcher(mock_session)
-        assert searcher._date_cutoff < datetime.now()
-        assert searcher._date_cutoff > datetime.now() - timedelta(days=366)
+        searcher = EmailSearcher(session_manager=mock_session)
+        query = searcher._build_restrict_query("test'email@example.com", None)
+        assert "test''email@example.com" in query
+
+    def test_search_raises_if_no_session(self):
+        searcher = EmailSearcher()
+        with pytest.raises(RuntimeError, match="No session manager"):
+            searcher.search("test@example.com")

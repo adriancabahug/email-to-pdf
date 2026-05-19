@@ -5,7 +5,7 @@ a = Analysis(
     ['src\\main.py'],
     pathex=[],
     binaries=[],
-    datas=[('C:\\Users\\admin\\AppData\\Local\\ms-playwright\\chromium-1217', 'playwright-browsers/chromium-1217'), ('C:\\Users\\admin\\AppData\\Local\\ms-playwright\\chromium_headless_shell-1217', 'playwright-browsers/chromium_headless_shell-1217'), ('C:\\Users\\admin\\AppData\\Local\\ms-playwright\\ffmpeg-1011', 'playwright-browsers/ffmpeg-1011')],
+    datas=[],
     hiddenimports=['win32com', 'win32com.client', 'pythoncom', 'pywintypes', 'win32timezone', 'playwright', 'rich', 'rich.prompt'],
     hookspath=[],
     hooksconfig={},

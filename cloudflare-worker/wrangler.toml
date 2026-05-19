@@ -1,3 +1,7 @@
 name = "email-to-pdf-license"
 main = "index.js"
 compatibility_date = "2025-01-01"
+
+# Uncomment and replace with your license keys JSON:
+# [vars]
+# LICENSE_KEYS = '{"KEY1": {"expires": "2026-12-31"}, "KEY2": {"expires": "2027-01-01"}}'

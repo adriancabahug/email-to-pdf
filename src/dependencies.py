@@ -50,11 +50,12 @@ class CompositionRoot:
         cfg = ConfigManager.load()
         appdata = cfg.appdata_dir()
         pdf_gen = PDFGenerator()
+        session_mgr = OutlookSessionManager()
 
         return Dependencies(
-            session_manager=OutlookSessionManager(),
+            session_manager=session_mgr,
             email_searcher=EmailSearcher(
-                session_manager=OutlookSessionManager(),
+                session_manager=session_mgr,
                 processed_store=None,
                 config_manager=cfg,
             ),

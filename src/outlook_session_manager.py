@@ -1,5 +1,6 @@
 """OutlookSessionManager - COM lifecycle, retry, backoff, and crash recovery."""
 
+import logging
 import random
 
 from src.exceptions import OutlookUnavailableError
@@ -8,6 +9,8 @@ import subprocess
 import win32com.client
 import pythoncom
 from typing import Any, Callable, List, Optional, Dict
+
+logger = logging.getLogger(__name__)
 
 try:
     import psutil
@@ -58,8 +61,8 @@ class OutlookSessionManager:
         self._connected = False
         try:
             pythoncom.CoUninitialize()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("COM cleanup warning: %s", exc)
 
     def is_healthy(self) -> bool:
         if not self._connected or not self._namespace:
@@ -150,6 +153,7 @@ class OutlookSessionManager:
                 return com_call()
             except Exception as e:
                 last_error = e
+                logger.debug("COM call attempt %d failed: %s", attempt, e)
                 if attempt < max_retries:
                     delay = min(initial_delay * (multiplier ** (attempt - 1)), max_delay)
                     actual_delay = delay + random.uniform(-jitter, jitter)

@@ -139,9 +139,6 @@ class PDFGenerator:
         self.stop()
         return self.start()
 
-    def __del__(self) -> None:
-        self.stop()
-
 
 class PDFSession:
     """

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Protocol
 
@@ -77,7 +78,7 @@ class LicenseValidator:
     def store_key(self, key: str) -> None:
         """Atomic write: temp file + rename to avoid corruption."""
         self._storage_path.parent.mkdir(parents=True, exist_ok=True)
-        temp = self._storage_path.with_suffix(".tmp")
+        temp = self._storage_path.with_suffix(f".tmp.{uuid.uuid4().hex}")
         temp.write_text(
             json.dumps({"license_key": key.strip()}, indent=2),
             encoding="utf-8",

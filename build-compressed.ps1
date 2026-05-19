@@ -33,12 +33,26 @@ Write-Host "`n[1/6] Cleaning old build artifacts..." -ForegroundColor Yellow
 if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
 if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
 
-Write-Host "`n[2/6] Building with PyInstaller (onedir)..." -ForegroundColor Yellow
+Write-Host "`n[1/6] Installing/updating dependencies..." -ForegroundColor Yellow
+python -m pip install --upgrade pip
+python -m pip install pywin32>=306 playwright>=1.40.0 requests>=2.31.0 rich>=15.0.0 psutil>=5.9.0 pytest>=8.0.0 pyinstaller>=6.0.0
+
+Write-Host "`n[2/6] Running tests..." -ForegroundColor Yellow
+python -m pytest tests/ --ignore=tests/test_playwright_pdf.py -q
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Tests failed. Fix before packaging." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "`n[3/6] Cleaning old build artifacts..." -ForegroundColor Yellow
+if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
+if (Test-Path "dist") { Remove-Item -Recurse -Force "dist" }
+
+Write-Host "`n[4/6] Building with PyInstaller (onedir)..." -ForegroundColor Yellow
 
 python -m PyInstaller `
     --name "email-to-pdf" `
     --onedir `
-    --windowed `
     --add-data "src;src" `
     --hidden-import "win32com.client" `
     --hidden-import "win32api" `
@@ -48,19 +62,12 @@ python -m PyInstaller `
     --collect-all "playwright" `
     --collect-all "rich" `
     --collect-all "psutil" `
-    src/main_orchestrator.py
+    src/main.py
 
 $ExePath = "dist/email-to-pdf/email-to-pdf.exe"
 
 if (-not (Test-Path $ExePath)) {
     Write-Host "[FAIL] Build failed - EXE not found" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "`n[3/6] Running tests..." -ForegroundColor Yellow
-python -m pytest tests/ --ignore=tests/test_playwright_pdf.py -q
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "Tests failed. Fix before packaging." -ForegroundColor Red
     exit 1
 }
 

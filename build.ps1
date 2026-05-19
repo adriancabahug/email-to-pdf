@@ -45,7 +45,6 @@ Write-Host "`n[5/6] Building with PyInstaller (onedir)..." -ForegroundColor Yell
 python -m PyInstaller `
     --name "email-to-pdf" `
     --onedir `
-    --windowed `
     --add-data "src;src" `
     --hidden-import "win32com.client" `
     --hidden-import "win32api" `
@@ -55,9 +54,9 @@ python -m PyInstaller `
     --collect-all "playwright" `
     --collect-all "rich" `
     --collect-all "psutil" `
-    src/main_orchestrator.py
+    src/main.py
 
-Write-Host "`n[6/7] Copying Chromium browser to bundle..." -ForegroundColor Yellow
+Write-Host "`n[6/6] Copying Chromium browser to bundle..." -ForegroundColor Yellow
 $PlaywrightBrowsersPath = "$env:LOCALAPPDATA\ms-playwright"
 $DestBrowsersPath = "dist\email-to-pdf\_internal\playwright-browsers"
 

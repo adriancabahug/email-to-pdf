@@ -5,6 +5,7 @@ Uses PDFSession context manager to guarantee browser lifecycle.
 
 from __future__ import annotations
 
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,6 +28,11 @@ from src.dependencies import Dependencies, CompositionRoot
 LICENSE_SERVER_URL = "https://email-to-pdf-license.email-to-pdf-license.workers.dev/validate"
 
 
+def _get_default_output_base() -> Path:
+    default_docs = Path(os.environ.get("USERPROFILE", ".")) / "Documents"
+    return default_docs / "EmailPDFs"
+
+
 @dataclass(frozen=True)
 class DirectorContext:
     first_name: str
@@ -44,7 +50,9 @@ class MainOrchestrator:
         deps: Optional[Dependencies] = None,
     ) -> None:
         self._context = context or CLI.resolve([])
-        self._output_base = output_base or Path(r"C:\Users\admin\Documents\EmailPDFs")
+        self._output_base = output_base or _get_default_output_base()
+        if isinstance(self._output_base, Path):
+            self._output_base = self._output_base.expanduser().resolve()
         self._deps = deps or CompositionRoot(self._output_base).build()
         self._cli = CLI()
 

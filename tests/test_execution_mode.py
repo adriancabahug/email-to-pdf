@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import argparse
 
-from src.cli import ExecutionMode, ExecutionContext, resolve_mode
+from src.cli import ExecutionMode, ExecutionContext, CLI
 
 
 class TestExecutionMode:
@@ -19,59 +19,33 @@ class TestExecutionContext:
     def test_execution_context_has_required_fields(self):
         ctx = ExecutionContext(
             mode=ExecutionMode.BATCH,
-            stdin_allowed=False,
-            interactive_allowed=False
+            directors=[],
+            output_dir=None
         )
         assert ctx.mode == ExecutionMode.BATCH
-        assert ctx.stdin_allowed is False
-        assert ctx.interactive_allowed is False
+        assert ctx.directors == []
 
     def test_execution_context_dataclass(self):
         ctx = ExecutionContext(
             mode=ExecutionMode.INTERACTIVE,
-            stdin_allowed=True,
-            interactive_allowed=True
+            directors=[{"first": "John", "last": "Doe", "smsf": "Test"}],
+            output_dir=None,
+            verbose=True
         )
         assert ctx.mode == ExecutionMode.INTERACTIVE
-        assert ctx.stdin_allowed is True
-        assert ctx.interactive_allowed is True
+        assert len(ctx.directors) == 1
+        assert ctx.verbose is True
 
 
-class TestResolveMode:
-    def test_batch_flag_returns_batch_mode(self):
-        args = argparse.Namespace(interactive=False, console=False, batch=True)
-        ctx = resolve_mode(args, stdin_ok=False)
-        assert ctx.mode == ExecutionMode.BATCH
-        assert ctx.stdin_allowed is False
-        assert ctx.interactive_allowed is False
+class TestCLIResolve:
+    def test_resolve_batch_mode(self):
+        with patch.object(CLI, '_stdin_available', return_value=True):
+            with patch('builtins.open', MagicMock()):
+                with patch('json.load', return_value=[{"first": "John", "last": "Doe", "smsf": "Test"}]):
+                    ctx = CLI.resolve(['--batch', 'test.json'])
+                    assert ctx.mode == ExecutionMode.BATCH
 
-    def test_interactive_flag_returns_interactive_mode(self):
-        args = argparse.Namespace(interactive=True, console=False, batch=False)
-        ctx = resolve_mode(args, stdin_ok=False)
-        assert ctx.mode == ExecutionMode.INTERACTIVE
-        assert ctx.stdin_allowed is True
-        assert ctx.interactive_allowed is True
-
-    def test_console_flag_returns_interactive_mode(self):
-        args = argparse.Namespace(interactive=False, console=True, batch=False)
-        ctx = resolve_mode(args, stdin_ok=False)
-        assert ctx.mode == ExecutionMode.INTERACTIVE
-        assert ctx.stdin_allowed is True
-        assert ctx.interactive_allowed is True
-
-    def test_no_flags_no_stdin_falls_back_to_batch(self):
-        args = argparse.Namespace(interactive=False, console=False, batch=False)
-        ctx = resolve_mode(args, stdin_ok=False)
-        assert ctx.mode == ExecutionMode.BATCH
-
-    def test_no_flags_with_stdin_falls_back_to_interactive(self):
-        args = argparse.Namespace(interactive=False, console=False, batch=False)
-        ctx = resolve_mode(args, stdin_ok=True)
-        assert ctx.mode == ExecutionMode.INTERACTIVE
-
-    def test_interactive_flag_with_stdin_available(self):
-        args = argparse.Namespace(interactive=True, console=False, batch=False)
-        ctx = resolve_mode(args, stdin_ok=True)
-        assert ctx.mode == ExecutionMode.INTERACTIVE
-        assert ctx.stdin_allowed is True
-        assert ctx.interactive_allowed is True
+    def test_resolve_interactive_requires_tty(self):
+        with patch.object(CLI, '_stdin_available', return_value=False):
+            with pytest.raises(SystemExit):
+                CLI.resolve([])
