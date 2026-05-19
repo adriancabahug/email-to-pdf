@@ -141,6 +141,13 @@ class ProgressManager:
             return 0.0
         return time.time() - self._start_time
 
+    def stop(self) -> None:
+        """Stop the progress bar and clean up."""
+        if self._progress:
+            self._progress.stop()
+            self._progress = None
+            self._task = None
+
     # ------------------------------------------------------------------ #
     # Aliases for the API expected by MainOrchestrator
     # ------------------------------------------------------------------ #

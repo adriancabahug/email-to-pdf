@@ -4,13 +4,13 @@ import os
 from pathlib import Path
 from typing import Optional, Union
 
-from src.pdf_generator import PDFGenerator
 from src.email_formatter import EmailFormatter
+from src.pdf_generator import PDFGenerator
 
 
 def _get_default_output_base() -> Path:
-    default_docs = Path(os.environ.get("USERPROFILE", ".")) / "Documents"
-    return default_docs / "EmailPDFs"
+    docs = Path(os.environ.get("USERPROFILE", ".")) / "Documents"
+    return docs / "EmailPDFs"
 
 
 class FileManager:
@@ -24,7 +24,9 @@ class FileManager:
         email_formatter: EmailFormatter,
         output_base: Optional[Union[str, Path]] = None,
     ):
-        self.output_base = Path(output_base) if output_base else self.DEFAULT_OUTPUT_BASE
+        self.output_base = (
+            Path(output_base) if output_base else self.DEFAULT_OUTPUT_BASE
+        )
         self.pdf_generator = pdf_generator
         self.email_formatter = email_formatter
 

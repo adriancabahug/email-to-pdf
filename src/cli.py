@@ -64,8 +64,8 @@ class CLI:
         parser.add_argument(
             "--output",
             "-o",
-            default=".",
-            help="Output directory for PDFs [default: current directory]",
+            default=None,
+            help="Output directory for PDFs [default: %USERPROFILE%\\Documents\\EmailPDFs]",
         )
         parser.add_argument(
             "--verbose",
@@ -80,7 +80,7 @@ class CLI:
         parser = cls.build_parser()
         ns = parser.parse_args(args)
 
-        output_dir = Path(ns.output).expanduser().resolve()
+        output_dir = Path(ns.output).expanduser().resolve() if ns.output else None
 
         if ns.batch:
             smsf_entries = cls._load_batch_file(Path(ns.batch))
