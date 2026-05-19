@@ -28,55 +28,62 @@ Type or paste the key provided to you and press Enter. The key will be validated
 
 > **Note:** License keys have an expiration date. If your key expires, you will be prompted to enter a new one.
 
-### 3. Enter Director Details
+### 3. Enter SMSF Details
 
-After successful license validation, the tool will connect to Outlook and prompt you for director information:
+After successful license validation, the tool will connect to Outlook and prompt you for SMSF information:
 
-\\\
-First name: Mari
-Last name: Acapulco
-SMSF name: Sulianas SMSF
-Email (optional): mari@eastcoastinc.com.au
-\\\
+\\
+SMSF name: Aura Super
+Emails/keywords (comma-separated or one per line, blank to finish):
+> andy.studt74@gmail.com
+> annaderdowski@uahoo.com
+> ventas
+> exceedia
+> shapesuper
+> earlypay
+> newwavelaw
+>
+Date range: [1] This year (default), [2] Custom range
+> 1
+\\
 
-- **First name** and **Last name** are required
 - **SMSF name** is used for folder and file naming
-- **Email** is optional — if left blank, the tool will search Outlook to find the director's email address automatically
+- **Emails/keywords** can be email addresses or search terms (one per line or comma-separated). Leave blank and press Enter when done.
+- **Date range** lets you search emails from this year or a custom date range
 
 ### 4. Processing
 
 The tool will:
-1. Search all Outlook accounts and folders for emails involving the director
+1. Search all Outlook accounts and folders for emails matching the keywords
 2. Format the emails into Outlook-style HTML
 3. Generate a PDF file
 
 You will see progress messages like:
-\\\
-Searching for emails involving mari@eastcoastinc.com.au...
-Found 5 emails. Formatting...
-Saving PDF for Sulianas SMSF...
-PDF generated: C:\Users\admin\Documents\EmailPDFs\Sulianas SMSF\Mari Acapulco - Sulianas SMSF.pdf
-\\\
+\\
+Searching for emails matching keywords...
+Found 42 emails in 8 folders. Formatting...
+Saving PDF for Aura Super...
+PDF generated: C:\Users\admin\Documents\EmailPDFs\Aura Super\Aura Super - Email Export.pdf
+\\
 
 ### 5. Continue or Exit
 
 After processing, you will be asked:
-\\\
-Process another director? (y/n):
-\\\
+\\
+Process another SMSF? (y/n):
+\\
 
-- Type \y\ to process another director
-- Type \
-\ to exit the tool
+- Type \y\ to process another SMSF
+- Type \ to exit the tool
 
 ## Where PDFs Are Saved
 
 PDFs are saved to:
-\\\
-C:\Users\admin\Documents\EmailPDFs\{SMSF Name}\{First Last} - {SMSF Name}.pdf
-\\\
+\\
+C:\Users\admin\Documents\EmailPDFs\{SMSF}\{SMSF} - Email Export.pdf
+\\
 
-Each SMSF gets its own folder, and the PDF is named after the director.
+Each SMSF gets its own folder, and the PDF is named after the SMSF.
 
 ## Troubleshooting
 
@@ -96,8 +103,9 @@ Each SMSF gets its own folder, and the PDF is named after the director.
 
 ### "No emails found"
 
-- Verify the director's email address is correct
+- Verify the search keywords are correct
 - The tool searches all Outlook accounts and folders — if emails exist, they should be found
+- Try different keywords or email addresses
 
 ### PDF generation fails
 

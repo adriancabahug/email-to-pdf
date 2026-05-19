@@ -157,7 +157,16 @@ class MainOrchestrator:
                 self._progress.skip(ctx.smsf, "Already processed")
                 return 0
 
-            self._progress.start(ctx.smsf)
+            folder_count = 0
+            if self._session and self._session.is_connected():
+                try:
+                    strategy = self._searcher._FastFolderStrategy()
+                    for _ in self._searcher._iter_folders(strategy):
+                        folder_count += 1
+                except Exception:
+                    pass
+
+            self._progress.start(ctx.smsf, folder_count=folder_count)
 
             emails = self._searcher.search(ctx.search_terms, ctx.start_date, ctx.end_date)
             if not emails:

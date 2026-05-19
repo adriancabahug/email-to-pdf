@@ -51,6 +51,7 @@ class CompositionRoot:
         appdata = cfg.appdata_dir()
         pdf_gen = PDFGenerator()
         session_mgr = OutlookSessionManager()
+        email_fmt = EmailFormatter(config_manager=cfg)
 
         return Dependencies(
             session_manager=session_mgr,
@@ -59,12 +60,12 @@ class CompositionRoot:
                 processed_store=None,
                 config_manager=cfg,
             ),
-            email_formatter=EmailFormatter(config_manager=cfg),
+            email_formatter=email_fmt,
             pdf_generator=pdf_gen,
             file_manager=FileManager(
                 output_base=self._output_base,
                 pdf_generator=pdf_gen,
-                email_formatter=EmailFormatter(config_manager=cfg),
+                email_formatter=email_fmt,
             ),
             config_manager=cfg,
             processed_store=ProcessedDirectorsStore(
