@@ -1,4 +1,4 @@
-"""EmailSearcher - Restrict()-based search with pluggable folder strategy."""
+"""EmailSearcher - Python-side filtering with pluggable folder strategy."""
 
 import logging
 from datetime import datetime, timedelta
@@ -81,18 +81,39 @@ class EmailSearcher:
 
         results: List[Any] = []
         seen_ids = set()
+        search_terms_lower = [t.lower() for t in search_terms]
 
         for folder in self._iter_folders(strategy):
             try:
-                restrict_query = self._build_restrict_query(search_terms, start_date, end_date)
                 items = folder.Items
-                restricted = items.Restrict(restrict_query) if restrict_query else items
-                restricted.Sort("[ReceivedTime]", True)
-                for msg in restricted:
+                items.Sort("[ReceivedTime]", True)
+
+                for msg in items:
+                    received = getattr(msg, "ReceivedTime", None)
+                    if received:
+                        if start_date and received < start_date:
+                            continue
+                        if end_date and received > end_date:
+                            continue
+
+                    text_to_search = " ".join([
+                        str(getattr(msg, "SenderEmailAddress", "") or ""),
+                        str(getattr(msg, "SenderName", "") or ""),
+                        str(getattr(msg, "To", "") or ""),
+                        str(getattr(msg, "CC", "") or ""),
+                        str(getattr(msg, "BCC", "") or ""),
+                        str(getattr(msg, "Subject", "") or ""),
+                        str(getattr(msg, "Body", "") or ""),
+                    ]).lower()
+
+                    if not any(term in text_to_search for term in search_terms_lower):
+                        continue
+
                     entry_id = getattr(msg, "EntryID", None)
                     if entry_id and entry_id not in seen_ids:
                         seen_ids.add(entry_id)
                         results.append(msg)
+
             except Exception as exc:
                 logger.debug("Folder search skipped: %s", exc)
 
@@ -122,32 +143,6 @@ class EmailSearcher:
                     logger.debug("Subfolder walk skipped: %s", exc)
         except Exception as exc:
             logger.debug("Folder iteration skipped: %s", exc)
-
-    def _build_restrict_query(
-        self,
-        search_terms: List[str],
-        start_date: Optional[datetime],
-        end_date: Optional[datetime],
-    ) -> str:
-        keyword_conditions = []
-        for kw in search_terms:
-            safe = kw.replace("'", "''")
-            keyword_conditions.append(f"[SenderEmailAddress] LIKE '%{safe}%'")
-            keyword_conditions.append(f"[To] LIKE '%{safe}%'")
-            keyword_conditions.append(f"[CC] LIKE '%{safe}%'")
-            keyword_conditions.append(f"[BCC] LIKE '%{safe}%'")
-            keyword_conditions.append(f"[Subject] LIKE '%{safe}%'")
-
-        parts = [f"({' OR '.join(keyword_conditions)})"]
-
-        if start_date:
-            start_str = start_date.strftime("%m/%d/%Y %I:%M %p")
-            parts.append(f"[ReceivedTime] >= '{start_str}'")
-        if end_date:
-            end_str = end_date.strftime("%m/%d/%Y %I:%M %p")
-            parts.append(f"[ReceivedTime] <= '{end_str}'")
-
-        return " AND ".join(parts)
 
     def _get_date_cutoff(self) -> Optional[datetime]:
         if not self._config:

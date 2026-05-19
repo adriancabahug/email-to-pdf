@@ -93,7 +93,7 @@ class TestInputValidation:
         prompts = iter([
             "Aura Super",
             "keyword1",
-            "2",  # custom date range
+            "3",  # custom date range
             "2025-01-01",  # start date
             "2025-06-30",  # end date
         ])
@@ -153,14 +153,12 @@ class TestBatchLoading:
         assert result[0].start_date.strftime("%Y-%m-%d") == "2025-01-01"
         assert result[0].end_date.strftime("%Y-%m-%d") == "2025-06-30"
 
-    def test_load_csv_defaults_to_current_year(self, tmp_path: Path):
+    def test_load_csv_defaults_to_all_time(self, tmp_path: Path):
         path = tmp_path / "batch.csv"
         path.write_text("smsf,search_terms\nAura Super,term1")
         result = CLI._load_batch_file(path)
-        from datetime import datetime
-        current_year = datetime.now().year
-        assert result[0].start_date.year == current_year
-        assert result[0].end_date.year == current_year
+        assert result[0].start_date is None
+        assert result[0].end_date is None
 
     def test_load_unsupported_format(self, tmp_path: Path):
         path = tmp_path / "batch.txt"

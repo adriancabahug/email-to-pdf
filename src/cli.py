@@ -139,11 +139,9 @@ class CLI:
         return Confirm.ask("Process another SMSF?", default=True)
 
     @staticmethod
-    def _get_current_year_date_range() -> tuple[datetime, datetime]:
-        now = datetime.now()
-        start = datetime(now.year, 1, 1)
-        end = datetime(now.year, 12, 31, 23, 59, 59)
-        return start, end
+    def _get_current_year_date_range() -> tuple[Optional[datetime], Optional[datetime]]:
+        """Return (None, None) for 'all time' search."""
+        return None, None
 
     @staticmethod
     def _parse_keywords(input_str: str) -> List[str]:
@@ -178,11 +176,15 @@ class CLI:
             raise ValueError("At least one keyword is required")
 
         date_choice = Prompt.ask(
-            "Date range: [1] This year (default), [2] Custom range",
+            "Date range: [1] All time (default), [2] This year, [3] Custom range",
             default="1"
         )
 
         if date_choice == "2":
+            now = datetime.now()
+            start_date = datetime(now.year, 1, 1)
+            end_date = datetime(now.year, 12, 31, 23, 59, 59)
+        elif date_choice == "3":
             start_str = Prompt.ask("Start date (YYYY-MM-DD)")
             end_str = Prompt.ask("End date (YYYY-MM-DD)")
             try:

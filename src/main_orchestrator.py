@@ -168,7 +168,8 @@ class MainOrchestrator:
 
             self._progress.start(ctx.smsf, folder_count=folder_count)
 
-            emails = self._searcher.search(ctx.search_terms, ctx.start_date, ctx.end_date)
+            all_terms = [ctx.smsf] + ctx.search_terms
+            emails = self._searcher.search(all_terms, ctx.start_date, ctx.end_date)
             if not emails:
                 self._progress.warning(ctx.smsf, "No emails matched criteria")
                 self._store.mark_processed(ctx.smsf)

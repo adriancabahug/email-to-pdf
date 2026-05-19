@@ -51,12 +51,6 @@ class TestEmailSearcher:
         result = searcher.search("alice@example.com", mode="deep")
         assert result == []
 
-    def test_build_restrict_query_escapes_quotes(self):
-        mock_session = MagicMock()
-        searcher = EmailSearcher(session_manager=mock_session)
-        query = searcher._build_restrict_query(["test'email@example.com"], None, None)
-        assert "test''email@example.com" in query
-
     def test_search_raises_if_no_session(self):
         searcher = EmailSearcher()
         with pytest.raises(RuntimeError, match="No session manager"):
@@ -73,31 +67,4 @@ class TestEmailSearcher:
         )
         assert result == []
 
-    def test_build_restrict_query_multi_keyword(self):
-        mock_session = MagicMock()
-        searcher = EmailSearcher(session_manager=mock_session)
-        query = searcher._build_restrict_query(
-            ["alice", "bob"],
-            datetime(2025, 1, 1),
-            datetime(2025, 12, 31)
-        )
-        assert "alice" in query
-        assert "bob" in query
-        assert "OR" in query
-        assert "SenderEmailAddress" in query
-        assert "To" in query
-        assert "CC" in query
-        assert "BCC" in query
-        assert "Subject" in query
-        assert "ReceivedTime" in query
-
-    def test_build_restrict_query_with_date_range(self):
-        mock_session = MagicMock()
-        searcher = EmailSearcher(session_manager=mock_session)
-        query = searcher._build_restrict_query(
-            ["test"],
-            datetime(2025, 6, 1),
-            datetime(2025, 6, 30)
-        )
-        assert "06/01/2025" in query
-        assert "06/30/2025" in query
+    
