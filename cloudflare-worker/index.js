@@ -3,11 +3,14 @@
  *
  * Deploy: npx wrangler deploy
  *
- * Keys are stored in the KEYS object below.
- * To add/remove keys, edit this file and redeploy.
+ * License keys are loaded from Cloudflare Secrets/Environment Bindings.
+ * Set the LICENSE_KEYS secret with JSON format:
+ *   {"KEY-STRING": {"expires": "YYYY-MM-DD"}}
  *
- * Format:
- *   "KEY-STRING": { "expires": "YYYY-MM-DD" }
+ * For local development, copy .dev.vars.example to .dev.vars
+ * and add your test keys there.
+ *
+ * DO NOT hardcode keys in this file - use environment variables.
  */
 
 // In-memory rate limiting: IP -> { count, resetTime }
@@ -44,19 +47,22 @@ function checkRateLimit(ip) {
 }
 
 function getKeys(env) {
-  if (env.LICENSE_KEYS) {
-    try {
-      return JSON.parse(env.LICENSE_KEYS);
-    } catch (e) {
-      console.error("Failed to parse LICENSE_KEYS env:", e);
-    }
+  if (!env.LICENSE_KEYS) {
+    console.error("LICENSE_KEYS environment variable is not set. Deploy with wrangler secret put LICENSE_KEYS");
+    return {};
   }
 
-  // Fallback to hardcoded keys for backward compatibility
-  return {
-    "I79M2Q-0U8VTN-MPCUBI": { expires: "2026-05-31" },
-    "NEWKEY1-A1B2C3-D4E5F6": { expires: "2026-06-10" },
-  };
+  try {
+    const parsed = JSON.parse(env.LICENSE_KEYS);
+    if (typeof parsed !== "object" || parsed === null) {
+      console.error("LICENSE_KEYS must be a JSON object");
+      return {};
+    }
+    return parsed;
+  } catch (e) {
+    console.error("Failed to parse LICENSE_KEYS env:", e);
+    return {};
+  }
 }
 
 export default {
@@ -95,6 +101,14 @@ export default {
       }
 
       const KEYS = getKeys(env);
+
+      if (Object.keys(KEYS).length === 0) {
+        return new Response(
+          JSON.stringify({ valid: false, reason: "server_not_configured" }),
+          { status: 503, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
       const keyData = KEYS[key];
 
       if (!keyData) {

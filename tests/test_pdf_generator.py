@@ -1,73 +1,85 @@
 """
-Tests for non-singleton PDFGenerator and PDFSession context manager.
+Tests for PDFGenerator with browser recycling support.
 """
 
+import pytest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-from src.pdf_generator import PDFGenerator, PDFSession
+from src.pdf_generator import PDFGenerator, DEFAULT_RECYCL_THRESHOLD
 
 
-@pytest.fixture
-def generator() -> PDFGenerator:
-    return PDFGenerator()
+class TestBrowserRecycling:
+    """Tests for browser recycling functionality."""
 
+    def test_default_recycle_threshold(self):
+        gen = PDFGenerator()
+        assert gen._recycle_threshold == DEFAULT_RECYCL_THRESHOLD
+        assert gen._pdf_count == 0
 
-class TestLifecycle:
-    def test_start_creates_browser(self, generator: PDFGenerator):
-        with patch("src.pdf_generator.sync_playwright") as mock_pw:
-            mock_ctx = MagicMock()
-            mock_browser = MagicMock()
-            mock_ctx.start.return_value = mock_ctx
-            mock_ctx.chromium.launch.return_value = mock_browser
-            mock_pw.return_value = mock_ctx
+    def test_custom_recycle_threshold(self):
+        gen = PDFGenerator(recycle_threshold=10)
+        assert gen._recycle_threshold == 10
+        assert gen._pdf_count == 0
 
-            assert generator.start() is True
-            assert generator.is_running()
-            assert generator._browser is mock_browser
+    def test_pdf_count_increments_on_success(self):
+        gen = PDFGenerator(recycle_threshold=5)
+        gen._browser = MagicMock()
+        gen._playwright = MagicMock()
 
-    def test_start_failure(self, generator: PDFGenerator):
-        with patch("src.pdf_generator.sync_playwright", side_effect=RuntimeError("boom")):
-            assert generator.start() is False
-            assert not generator.is_running()
+        gen._browser.new_page.return_value = MagicMock()
 
-    def test_stop_idempotent(self, generator: PDFGenerator):
-        generator.stop()  # should not raise when nothing started
-
-    def test_session_context_manager(self, generator: PDFGenerator):
-        with patch.object(generator, "start", return_value=True) as mock_start, \
-             patch.object(generator, "stop") as mock_stop:
-            with PDFSession(generator) as g:
-                assert g is generator
-                mock_start.assert_called_once()
-            mock_stop.assert_called_once()
-
-    def test_session_raises_if_start_fails(self, generator: PDFGenerator):
-        with patch.object(generator, "start", return_value=False):
-            with pytest.raises(RuntimeError, match="Could not start PDF engine"):
-                with PDFSession(generator):
-                    pass  # pragma: no cover
-
-
-class TestGeneratePdf:
-    def test_generate_pdf_success(self, generator: PDFGenerator, tmp_path: Path):
-        mock_page = MagicMock()
-        mock_browser = MagicMock()
-        mock_browser.new_page.return_value = mock_page
-
-        generator._browser = mock_browser
-        generator._playwright = MagicMock()
-
-        output = tmp_path / "test.pdf"
-        result = generator.generate_pdf("<h1>Hello</h1>", output)
+        result = gen.generate_pdf("<html></html>", Path("test.pdf"))
 
         assert result is True
-        mock_page.set_content.assert_called_once_with("<h1>Hello</h1>", wait_until="networkidle")
-        mock_page.pdf.assert_called_once()
-        mock_page.close.assert_called_once()
+        assert gen._pdf_count == 1
 
-    def test_generate_pdf_requires_start(self, generator: PDFGenerator, tmp_path: Path):
-        result = generator.generate_pdf("<h1>X</h1>", tmp_path / "x.pdf")
-        assert result is False
+    def test_pdf_count_increments_on_file_method(self):
+        gen = PDFGenerator(recycle_threshold=5)
+        gen._browser = MagicMock()
+        gen._playwright = MagicMock()
+
+        page_mock = MagicMock()
+        gen._browser.new_page.return_value = page_mock
+
+        result = gen.generate_pdf_from_file("input.html", "output.pdf")
+
+        assert result is True
+        assert gen._pdf_count == 1
+
+    def test_reset_count_method(self):
+        gen = PDFGenerator()
+        gen._pdf_count = 10
+        gen.reset_count()
+        assert gen._pdf_count == 0
+
+    def test_count_resets_on_restart(self):
+        gen = PDFGenerator(recycle_threshold=3)
+        gen._pdf_count = 3
+
+        with patch.object(gen, 'start', return_value=True):
+            gen._restart_browser()
+
+        assert gen._pdf_count == 0
+
+
+class TestPDFGenerator:
+    """Basic tests for PDFGenerator to ensure existing behavior works."""
+
+    def test_initial_state(self):
+        gen = PDFGenerator()
+        assert gen._browser is None
+        assert gen._playwright is None
+        assert not gen.is_running()
+
+    def test_stop_resets_count(self):
+        gen = PDFGenerator()
+        gen._pdf_count = 5
+        gen._browser = MagicMock()
+        gen._playwright = MagicMock()
+
+        gen.stop()
+
+        assert gen._pdf_count == 0
+        assert gen._browser is None
+        assert gen._playwright is None

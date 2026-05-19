@@ -5,6 +5,7 @@ Uses PDFSession context manager to guarantee browser lifecycle.
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from dataclasses import dataclass
@@ -23,6 +24,9 @@ from src.pdf_generator import PDFGenerator, PDFSession
 from src.cli import CLI, ExecutionContext, ExecutionMode, SMSFEntry
 from src.exceptions import LicenseInputUnavailableError, OutlookUnavailableError
 from src.dependencies import Dependencies, CompositionRoot
+from src.performance import get_tracker
+
+logger = logging.getLogger(__name__)
 
 
 LICENSE_SERVER_URL = "https://email-to-pdf-license.email-to-pdf-license.workers.dev/validate"
@@ -73,9 +77,11 @@ class MainOrchestrator:
     # Entry point
     # ------------------------------------------------------------------ #
     def run(self) -> int:
+        logger.info("Starting email-to-pdf orchestrator")
         license_key = self._license.prompt_and_validate()
         if not license_key:
             self._progress.error("SYSTEM", "License validation failed")
+            logger.error("License validation failed")
             return 1
 
         self._print_banner()
@@ -84,9 +90,14 @@ class MainOrchestrator:
             with PDFSession(self._deps.pdf_generator) as pdf:
                 self._pdf = pdf
                 if self._context.mode == ExecutionMode.BATCH:
-                    return self._run_batch()
-                return self._run_interactive()
+                    result = self._run_batch()
+                    logger.info("Batch processing completed with %d failures", result)
+                    return result
+                result = self._run_interactive()
+                logger.info("Interactive session completed with %d failures", result)
+                return result
         except RuntimeError as exc:
+            logger.error("PDF engine failed: %s", exc)
             self._progress.error("SYSTEM", f"PDF engine failed: {exc}")
             return 1
         finally:
@@ -152,6 +163,7 @@ class MainOrchestrator:
     # Unified pipeline
     # ------------------------------------------------------------------ #
     def _process_smsf(self, ctx: SMSFContext) -> int:
+        tracker = get_tracker()
         try:
             if ctx.skip_if_processed and self._store.is_processed(ctx.smsf):
                 self._progress.skip(ctx.smsf, "Already processed")
@@ -159,12 +171,13 @@ class MainOrchestrator:
 
             folder_count = 0
             if self._session and self._session.is_connected():
-                try:
-                    strategy = self._searcher._FastFolderStrategy()
-                    for _ in self._searcher._iter_folders(strategy):
-                        folder_count += 1
-                except Exception:
-                    pass
+                with tracker.track("folder_scan"):
+                    try:
+                        strategy = self._searcher._FastFolderStrategy()
+                        for _ in self._searcher._iter_folders(strategy):
+                            folder_count += 1
+                    except Exception:
+                        pass
 
             self._progress.start(ctx.smsf, folder_count=folder_count)
 
@@ -173,12 +186,13 @@ class MainOrchestrator:
             def on_event(event):
                 self._progress.display_search_event(event)
 
-            emails = self._searcher.search(
-                all_terms,
-                ctx.start_date,
-                ctx.end_date,
-                on_event=on_event,
-            )
+            with tracker.track("email_search"):
+                emails = self._searcher.search(
+                    all_terms,
+                    ctx.start_date,
+                    ctx.end_date,
+                    on_event=on_event,
+                )
 
             from src.email_searcher import SearchEvent
             self._progress.display_search_event(
@@ -192,8 +206,11 @@ class MainOrchestrator:
                 self._store.mark_processed(ctx.smsf)
                 return 0
 
-            html = self._email_formatter.format_multiple_emails(emails)
-            path = self._file_mgr.save_pdf(html, ctx.smsf)
+            with tracker.track("email_formatting"):
+                html = self._email_formatter.format_multiple_emails(emails)
+
+            with tracker.track("pdf_generation"):
+                path = self._file_mgr.save_pdf(html, ctx.smsf)
 
             if not path:
                 self._progress.error(ctx.smsf, "PDF generation failed — SMSF not marked processed")

@@ -16,31 +16,42 @@ if getattr(sys, 'frozen', False):
     browser_path = os.path.join(bundle_dir, "playwright-browsers")
     if os.path.exists(browser_path):
         os.environ["PLAYWRIGHT_BROWSERS_PATH"] = browser_path
+        logger.debug("Set PLAYWRIGHT_BROWSERS_PATH to %s", browser_path)
+    else:
+        logger.warning("Browser path not found in bundle: %s", browser_path)
 
 try:
     from playwright.sync_api import sync_playwright
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
+    logger.warning("Playwright not available - PDF generation disabled")
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_RECYCL_THRESHOLD = 50
 
 
 class PDFGenerator:
     """
     Non-singleton instance. Start/stop is explicit. Use PDFSession context
     manager in the orchestrator to ensure cleanup.
+
+    Includes browser recycling to prevent memory leaks during large batches.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, recycle_threshold: int = DEFAULT_RECYCL_THRESHOLD) -> None:
         self._playwright: Optional[Any] = None
         self._browser: Optional[Any] = None
+        self._recycle_threshold = recycle_threshold
+        self._pdf_count = 0
 
     # ------------------------------------------------------------------ #
     # Lifecycle
     # ------------------------------------------------------------------ #
     def start(self) -> bool:
         if not PLAYWRIGHT_AVAILABLE:
+            logger.warning("Playwright not available")
             return False
         if self._browser is not None:
             return True
@@ -66,7 +77,12 @@ class PDFGenerator:
             except Exception as exc:
                 logger.warning("Playwright stop warning: %s", exc)
             self._playwright = None
+        self._pdf_count = 0
         logger.info("Playwright resources released")
+
+    def reset_count(self) -> None:
+        """Reset the PDF count (useful after manual browser restart)."""
+        self._pdf_count = 0
 
     def is_running(self) -> bool:
         return self._browser is not None
@@ -95,7 +111,13 @@ class PDFGenerator:
                 },
             )
             page.close()
+            self._pdf_count += 1
             logger.info("PDF written: %s", output_path)
+
+            if self._pdf_count >= self._recycle_threshold:
+                logger.info("Browser recycle threshold reached (%d), restarting browser", self._recycle_threshold)
+                self._restart_browser()
+
             return True
         except Exception as exc:
             logger.error("PDF generation failed: %s", exc)
@@ -124,7 +146,13 @@ class PDFGenerator:
                     margin={'top': '0.5in', 'bottom': '0.5in', 'left': '0.5in', 'right': '0.5in'}
                 )
                 page.close()
+                self._pdf_count += 1
                 logger.info("PDF generated from file: %s", output_path)
+
+                if self._pdf_count >= self._recycle_threshold:
+                    logger.info("Browser recycle threshold reached (%d), restarting browser", self._recycle_threshold)
+                    self._restart_browser()
+
                 return True
             except Exception as exc:
                 last_error = exc
@@ -137,6 +165,7 @@ class PDFGenerator:
 
     def _restart_browser(self) -> bool:
         self.stop()
+        self._pdf_count = 0
         return self.start()
 
 

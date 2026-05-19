@@ -50,8 +50,10 @@ class OutlookSessionManager:
             self._outlook_app = win32com.client.Dispatch("Outlook.Application")
             self._namespace = self._outlook_app.GetNamespace("MAPI")
             self._connected = True
+            logger.info("Successfully connected to Outlook")
             return True
         except Exception as e:
+            logger.error("Failed to connect to Outlook: %s", e)
             self._connected = False
             return False
 

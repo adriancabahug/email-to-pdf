@@ -2,6 +2,12 @@ name = "email-to-pdf-license"
 main = "index.js"
 compatibility_date = "2025-01-01"
 
-# Uncomment and replace with your license keys JSON:
-# [vars]
-# LICENSE_KEYS = '{"KEY1": {"expires": "2026-12-31"}, "KEY2": {"expires": "2027-01-01"}}'
+# License keys are stored as a secret, NOT in this file
+#
+# To add or update license keys:
+#   1. Prepare your keys JSON: {"KEY-STRING": {"expires": "YYYY-MM-DD"}}
+#   2. Run: npx wrangler secret put LICENSE_KEYS
+#   3. Paste your JSON when prompted
+#
+# For local development, copy .dev.vars.example to .dev.vars
+# and update the LICENSE_KEYS value with your test keys.

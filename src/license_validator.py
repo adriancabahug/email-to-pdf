@@ -52,16 +52,20 @@ class LicenseValidator:
     def validate_key(self, key: str) -> Dict[str, Any]:
         """Pure network boundary. Raises on transport or HTTP error."""
         http = self._resolve_http()
-        resp = http.post(
-            self._api_url,
-            json={"key": key.strip()},
-            headers={"Content-Type": "application/json"},
-            timeout=(5, 10),
-        )
-        resp.raise_for_status()
-        payload = resp.json()
-        logger.info("License validation response: valid=%s", payload.get("valid"))
-        return payload
+        try:
+            resp = http.post(
+                self._api_url,
+                json={"key": key.strip()},
+                headers={"Content-Type": "application/json"},
+                timeout=(5, 10),
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            logger.info("License validation response: valid=%s", payload.get("valid"))
+            return payload
+        except Exception as exc:
+            logger.error("License validation network error: %s", exc)
+            raise
 
     def get_stored_key(self) -> Optional[str]:
         """Idempotent read. Returns None if file missing or malformed."""

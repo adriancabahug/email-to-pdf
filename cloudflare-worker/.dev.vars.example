@@ -1,0 +1,7 @@
+# Local development variables for Cloudflare Worker
+# Copy this file to .dev.vars and add your test keys
+#
+# Format: LICENSE_KEYS should be a JSON object with keys and expiration dates
+# Example: {"TESTKEY-123": {"expires": "2026-12-31"}}
+
+LICENSE_KEYS={"TEST-KEY-001": {"expires": "2027-12-31"}}

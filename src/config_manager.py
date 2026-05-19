@@ -1,10 +1,13 @@
 """ConfigManager - Centralized configuration system with AppData persistence."""
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
 from dataclasses import dataclass, field, asdict
+
+from src.logging_config import setup_logging, get_log_dir, ensure_log_dir
 
 
 DEFAULT_CONFIG = {
@@ -93,7 +96,23 @@ class ConfigManager:
             cls._generate_template(instance._appdata_dir)
 
         instance._config = cls._validate(instance._config, [])
+
+        cls._init_logging(instance._config)
         return instance
+
+    @classmethod
+    def _init_logging(cls, config: dict) -> None:
+        """Initialize logging based on config."""
+        log_config = config.get("logging", {})
+        log_level = log_config.get("level", "info")
+        verbose = log_config.get("verbose_console", False)
+
+        log_dir = ensure_log_dir()
+        setup_logging(
+            level=log_level,
+            log_dir=log_dir,
+            verbose_console=verbose,
+        )
 
     @staticmethod
     def _get_appdata_dir() -> Path:
