@@ -169,7 +169,22 @@ class MainOrchestrator:
             self._progress.start(ctx.smsf, folder_count=folder_count)
 
             all_terms = [ctx.smsf] + ctx.search_terms
-            emails = self._searcher.search(all_terms, ctx.start_date, ctx.end_date)
+
+            def on_event(event):
+                self._progress.display_search_event(event)
+
+            emails = self._searcher.search(
+                all_terms,
+                ctx.start_date,
+                ctx.end_date,
+                on_event=on_event,
+            )
+
+            from src.email_searcher import SearchEvent
+            self._progress.display_search_event(
+                SearchEvent(type='complete', total=len(emails))
+            )
+
             self._progress.stop()
 
             if not emails:

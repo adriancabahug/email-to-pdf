@@ -2,13 +2,27 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any, List, Optional, Protocol
+from dataclasses import dataclass
+from typing import Any, Callable, List, Optional, Protocol
 
 from src.outlook_session_manager import OutlookSessionManager
 from src.processed_directors_store import ProcessedDirectorsStore
 from src.config_manager import ConfigManager
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class SearchEvent:
+    type: str  # 'account', 'folder', 'match', 'complete'
+    account: Optional[str] = None
+    folder: Optional[str] = None
+    subject: Optional[str] = None
+    sender: Optional[str] = None
+    date: Optional[str] = None
+    current: Optional[int] = None
+    total: Optional[int] = None
+    message: Optional[str] = None
 
 
 class FolderStrategy(Protocol):
@@ -51,6 +65,7 @@ class EmailSearcher:
         start_date: Optional[datetime] = None,
         end_date: Optional[datetime] = None,
         mode: Optional[str] = None,
+        on_event: Optional[Callable[[SearchEvent], None]] = None,
     ) -> List[Any]:
         if not search_terms:
             return []
@@ -66,8 +81,8 @@ class EmailSearcher:
             mode = self._config.get("search.default_mode", "fast") if self._config else "fast"
 
         if mode == "deep":
-            return self._search(search_terms, start_date, end_date, _DeepFolderStrategy())
-        return self._search(search_terms, start_date, end_date, _FastFolderStrategy())
+            return self._search(search_terms, start_date, end_date, _DeepFolderStrategy(), on_event)
+        return self._search(search_terms, start_date, end_date, _FastFolderStrategy(), on_event)
 
     def _search(
         self,
@@ -75,6 +90,7 @@ class EmailSearcher:
         start_date: Optional[datetime],
         end_date: Optional[datetime],
         strategy: FolderStrategy,
+        on_event: Optional[Callable[[SearchEvent], None]] = None,
     ) -> List[Any]:
         if not self._session:
             raise RuntimeError("No session manager provided")
@@ -83,9 +99,37 @@ class EmailSearcher:
         seen_ids = set()
         search_terms_lower = [t.lower() for t in search_terms]
 
+        if on_event:
+            try:
+                accounts = self._session.get_all_accounts()
+                for account in accounts:
+                    name = getattr(account, "Name", "Unknown")
+                    total = 0
+                    try:
+                        for f in account.Folders:
+                            try:
+                                total += f.Items.Count
+                            except:
+                                pass
+                    except:
+                        pass
+                    on_event(SearchEvent(type='account', account=name, total=total))
+            except Exception as exc:
+                logger.debug("Account enumeration failed: %s", exc)
+
+        current_account = "Unknown"
+
         for folder in self._iter_folders(strategy):
             try:
                 folder_name = getattr(folder, "Name", "Unknown")
+
+                try:
+                    parent = getattr(folder, 'Parent', None)
+                    if parent:
+                        current_account = getattr(parent, 'Name', current_account)
+                except:
+                    pass
+
                 items = folder.Items
 
                 if start_date or end_date:
@@ -106,9 +150,22 @@ class EmailSearcher:
                 items.Sort("[ReceivedTime]", True)
                 total_items = getattr(items, "Count", 0)
 
+                if on_event:
+                    on_event(SearchEvent(
+                        type='folder',
+                        account=current_account,
+                        folder=folder_name,
+                        total=total_items,
+                    ))
+
                 for i, msg in enumerate(items, 1):
-                    if i % 100 == 0:
-                        logger.debug(f"Scanning {folder_name}: {i}/{total_items}")
+                    if start_date or end_date:
+                        received = getattr(msg, "ReceivedTime", None)
+                        if received:
+                            if start_date and received < start_date:
+                                continue
+                            if end_date and received > end_date:
+                                continue
 
                     text_to_search = " ".join([
                         str(getattr(msg, "SenderEmailAddress", "") or ""),
@@ -127,6 +184,16 @@ class EmailSearcher:
                     if entry_id and entry_id not in seen_ids:
                         seen_ids.add(entry_id)
                         results.append(msg)
+
+                        if on_event:
+                            on_event(SearchEvent(
+                                type='match',
+                                account=current_account,
+                                folder=folder_name,
+                                subject=str(getattr(msg, 'Subject', '')),
+                                sender=str(getattr(msg, 'SenderName', '')),
+                                date=str(getattr(msg, 'ReceivedTime', '')),
+                            ))
 
             except Exception as exc:
                 logger.debug("Folder search skipped: %s", exc)

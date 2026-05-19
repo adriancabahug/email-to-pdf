@@ -2,7 +2,9 @@
 
 import sys
 import time
-from typing import Optional, List, Dict, Any
+from typing import TYPE_CHECKING, Optional, List, Dict, Any
+if TYPE_CHECKING:
+    from src.email_searcher import SearchEvent
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -147,6 +149,33 @@ class ProgressManager:
             self._progress.stop()
             self._progress = None
             self._task = None
+
+    def display_search_event(self, event: "SearchEvent") -> None:
+        """Display real-time search progress events."""
+        import sys
+        if not sys.stdout.isatty():
+            return
+
+        if event.type == 'account':
+            self._console.print(
+                f"\n[bold cyan]Account:[/bold cyan] {event.account} | "
+                f"[bold]{event.total or 0:,}[/bold] total items"
+            )
+        elif event.type == 'folder':
+            self._console.print(
+                f"  [dim]Scanning {event.folder}... "
+                f"({event.total or 0:,} items)[/dim]"
+            )
+        elif event.type == 'match':
+            self._console.print(f"    [green]✓[/green] [bold]{event.subject}[/bold]")
+            self._console.print(
+                f"      [dim]From:[/dim] {event.sender} | "
+                f"[dim]{event.date}[/dim]"
+            )
+        elif event.type == 'complete':
+            self._console.print(
+                f"\n[bold green]Found {event.total or 0} matching emails[/bold green]"
+            )
 
     # ------------------------------------------------------------------ #
     # Aliases for the API expected by MainOrchestrator
