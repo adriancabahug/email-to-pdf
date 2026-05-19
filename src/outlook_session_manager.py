@@ -1,6 +1,8 @@
 """OutlookSessionManager - COM lifecycle, retry, backoff, and crash recovery."""
 
 import random
+
+from src.exceptions import OutlookUnavailableError
 import time
 import subprocess
 import win32com.client
@@ -231,7 +233,7 @@ class OutlookSessionManager:
             self._namespace = None
 
     def _raise_category_d(self) -> None:
-        raise RuntimeError(
+        raise OutlookUnavailableError(
             "Outlook requires user intervention (profile prompt, login, or modal dialog). "
             "Please sign in to Outlook manually and restart the application."
         )

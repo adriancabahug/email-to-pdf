@@ -17,3 +17,7 @@ class LicenseInputUnavailableError(RuntimeError):
     handles this by exiting cleanly with a message. This exception explicitly
     prohibits silent fallback patterns.
     """
+
+
+class OutlookUnavailableError(RuntimeError):
+    """Outlook COM boundary failure requiring reconnection or user intervention."""

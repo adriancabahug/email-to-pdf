@@ -20,7 +20,7 @@ from src.license_validator import LicenseValidator
 from src.progress_manager import ProgressManager
 from src.pdf_generator import PDFGenerator, PDFSession
 from src.cli import CLI, ExecutionContext, ExecutionMode
-from src.exceptions import LicenseInputUnavailableError
+from src.exceptions import LicenseInputUnavailableError, OutlookUnavailableError
 from src.dependencies import Dependencies, CompositionRoot
 
 
@@ -34,10 +34,6 @@ class DirectorContext:
     smsf: str
     mode: str
     skip_if_processed: bool = True
-
-
-class OutlookUnavailableError(Exception):
-    """Outlook COM boundary failure requiring reconnection."""
 
 
 class MainOrchestrator:
@@ -168,6 +164,10 @@ class MainOrchestrator:
 
             html = self._email_formatter.format_multiple_emails(emails)
             path = self._file_mgr.save_pdf(html, ctx.first_name, ctx.last_name, ctx.smsf)
+
+            if not path:
+                self._progress.error(ctx.smsf, "PDF generation failed — director not marked processed")
+                return 1
 
             self._store.mark_processed(ctx.smsf)
             self._progress.complete(ctx.smsf, str(path))
