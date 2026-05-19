@@ -12,7 +12,7 @@ from src.dependencies import CompositionRoot, Dependencies
 
 class TestCompositionRoot:
     def test_build_returns_populated_dependencies(self, tmp_path: Path):
-        with patch("src.dependencies.ConfigManager") as mock_cfg_cls:
+        with patch("src.config_manager.ConfigManager") as mock_cfg_cls:
             cfg = MagicMock()
             cfg.appdata_dir.return_value = tmp_path
             mock_cfg_cls.load.return_value = cfg

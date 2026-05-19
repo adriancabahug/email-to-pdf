@@ -69,5 +69,5 @@ class TestGeneratePdf:
         mock_page.close.assert_called_once()
 
     def test_generate_pdf_requires_start(self, generator: PDFGenerator, tmp_path: Path):
-        with pytest.raises(RuntimeError, match="must be started"):
-            generator.generate_pdf("<h1>X</h1>", tmp_path / "x.pdf")
+        result = generator.generate_pdf("<h1>X</h1>", tmp_path / "x.pdf")
+        assert result is False

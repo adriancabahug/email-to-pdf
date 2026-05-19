@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.dependencies import Dependencies
-from src.cli import ExecutionContext, ExecutionMode
+from src.cli import CLI, ExecutionContext, ExecutionMode
 from src.main_orchestrator import DirectorContext, MainOrchestrator, OutlookUnavailableError
 
 
@@ -19,17 +19,35 @@ def fake_deps(tmp_path: Path) -> Dependencies:
     pdf = MagicMock()
     pdf.start.return_value = True
 
-    return Dependencies(
-        session_manager=MagicMock(),
-        email_searcher=MagicMock(),
+    session_mgr = MagicMock()
+    session_mgr.discover_email_from_name.return_value = None
+    session_mgr.connect.return_value = True
+    session_mgr.is_connected.return_value = True
+
+    mock_email_searcher = MagicMock()
+    mock_email_searcher.search.return_value = []
+
+    processed_store = MagicMock()
+    processed_store.is_processed.return_value = False
+
+    deps = Dependencies(
+        session_manager=session_mgr,
+        email_searcher=mock_email_searcher,
         email_formatter=MagicMock(),
         pdf_generator=pdf,
         file_manager=MagicMock(),
         config_manager=MagicMock(),
-        processed_store=MagicMock(),
+        processed_store=processed_store,
         progress_manager=MagicMock(),
         license_validator=MagicMock(),
     )
+    return deps
+
+
+def _setup_session(orch: MainOrchestrator, deps: Dependencies) -> None:
+    """Set up session and searcher for direct _process_director calls."""
+    orch._session = deps.session_manager
+    orch._searcher = deps.email_searcher
 
 
 @pytest.fixture
@@ -48,6 +66,8 @@ def batch_context(tmp_path: Path) -> ExecutionContext:
 class TestRunLifecycle:
     def test_run_validates_license(self, batch_context: ExecutionContext, fake_deps: Dependencies, tmp_path: Path):
         fake_deps.license_validator.prompt_and_validate.return_value = None
+        fake_deps.session_manager.connect.return_value = True
+        fake_deps.session_manager.is_connected.return_value = True
         orch = MainOrchestrator(batch_context, tmp_path, deps=fake_deps)
         assert orch.run() == 1
         fake_deps.progress_manager.error.assert_called_once()
@@ -55,6 +75,8 @@ class TestRunLifecycle:
     def test_run_batch_success(self, batch_context: ExecutionContext, fake_deps: Dependencies, tmp_path: Path):
         fake_deps.license_validator.prompt_and_validate.return_value = "VALID-KEY"
         fake_deps.session_manager.discover_email_from_name.return_value = "alice@example.com"
+        fake_deps.session_manager.connect.return_value = True
+        fake_deps.session_manager.is_connected.return_value = True
         fake_deps.email_searcher.search.return_value = [MagicMock()]
         fake_deps.email_formatter.format_multiple_emails.return_value = "<html></html>"
         fake_deps.file_manager.save_pdf.return_value = tmp_path / "out.pdf"
@@ -70,6 +92,7 @@ class TestProcessDirector:
     def test_skip_already_processed(self, batch_context: ExecutionContext, fake_deps: Dependencies, tmp_path: Path):
         fake_deps.processed_store.is_processed.return_value = True
         orch = MainOrchestrator(batch_context, tmp_path, deps=fake_deps)
+        _setup_session(orch, fake_deps)
 
         ctx = DirectorContext("A", "B", "SMSF001", "batch", skip_if_processed=True)
         assert orch._process_director(ctx) == 0
@@ -78,6 +101,7 @@ class TestProcessDirector:
     def test_email_not_found(self, batch_context: ExecutionContext, fake_deps: Dependencies, tmp_path: Path):
         fake_deps.session_manager.discover_email_from_name.return_value = None
         orch = MainOrchestrator(batch_context, tmp_path, deps=fake_deps)
+        _setup_session(orch, fake_deps)
 
         ctx = DirectorContext("A", "B", "SMSF001", "batch")
         assert orch._process_director(ctx) == 1
@@ -87,6 +111,7 @@ class TestProcessDirector:
         fake_deps.session_manager.discover_email_from_name.return_value = "a@b.com"
         fake_deps.email_searcher.search.return_value = []
         orch = MainOrchestrator(batch_context, tmp_path, deps=fake_deps)
+        _setup_session(orch, fake_deps)
 
         ctx = DirectorContext("A", "B", "SMSF001", "batch")
         assert orch._process_director(ctx) == 0
@@ -99,6 +124,7 @@ class TestProcessDirector:
         fake_deps.file_manager.save_pdf.return_value = tmp_path / "final.pdf"
 
         orch = MainOrchestrator(batch_context, tmp_path, deps=fake_deps)
+        _setup_session(orch, fake_deps)
         ctx = DirectorContext("A", "B", "SMSF001", "batch")
         assert orch._process_director(ctx) == 0
 
@@ -110,6 +136,7 @@ class TestProcessDirector:
     def test_outlook_unavailable_escalates(self, batch_context: ExecutionContext, fake_deps: Dependencies, tmp_path: Path):
         fake_deps.session_manager.discover_email_from_name.side_effect = OutlookUnavailableError("boom")
         orch = MainOrchestrator(batch_context, tmp_path, deps=fake_deps)
+        _setup_session(orch, fake_deps)
 
         ctx = DirectorContext("A", "B", "SMSF001", "batch")
         with pytest.raises(OutlookUnavailableError):

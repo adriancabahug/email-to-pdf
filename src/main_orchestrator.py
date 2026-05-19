@@ -193,11 +193,14 @@ class MainOrchestrator:
         success = self._session.connect()
 
         if success and self._session.is_connected():
-            self._searcher = EmailSearcher(
-                session_manager=self._session,
-                processed_store=self._deps.processed_store,
-                config_manager=self._config
-            )
+            if self._deps.email_searcher:
+                self._searcher = self._deps.email_searcher
+            else:
+                self._searcher = EmailSearcher(
+                    session_manager=self._session,
+                    processed_store=self._deps.processed_store,
+                    config_manager=self._config
+                )
             self._connected = True
             self._progress.print_info("Connected to Outlook successfully.")
             return True

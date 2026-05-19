@@ -100,14 +100,28 @@ class TestPromptAndValidate:
         assert result == "STORED"
 
     def test_prompts_on_invalid_stored_key(self, storage: Path, monkeypatch):
+        class CyclingFakeHttp:
+            def __init__(self):
+                self.calls = []
+                self._response_idx = 0
+                self._responses = [
+                    FakeResponse({"valid": False}),
+                    FakeResponse({"valid": True}),
+                ]
+
+            def post(self, url: str, **kwargs):
+                self.calls.append((url, kwargs))
+                resp = self._responses[self._response_idx]
+                self._response_idx += 1
+                return resp
+
         storage.write_text(json.dumps({"license_key": "OLD"}))
-        http = FakeHttp(FakeResponse({"valid": False}))
+        http = CyclingFakeHttp()
         v = LicenseValidator("https://test.example/validate", storage, http_client=http)
 
         prompts = iter(["FRESH-KEY"])
         monkeypatch.setattr("src.license_validator.Prompt.ask", lambda msg, **kw: next(prompts))
 
-        http._response = FakeResponse({"valid": True})
         result = v.prompt_and_validate()
         assert result == "FRESH-KEY"
         assert v.get_stored_key() == "FRESH-KEY"

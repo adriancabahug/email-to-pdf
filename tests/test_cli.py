@@ -15,7 +15,7 @@ class TestArgumentParsing:
         csv_file = tmp_path / "dirs.csv"
         csv_file.write_text("first,last,smsf\nAlice,Smith,SMSF001\n")
 
-        ctx = CLI.resolve([str(csv_file), "--batch"])
+        ctx = CLI.resolve(["--batch", str(csv_file)])
         assert ctx.mode == ExecutionMode.BATCH
         assert len(ctx.directors) == 1
         assert ctx.directors[0]["first"] == "Alice"
@@ -28,13 +28,13 @@ class TestArgumentParsing:
     def test_output_dir_default(self, tmp_path: Path):
         csv_file = tmp_path / "x.csv"
         csv_file.write_text("first,last,smsf\nX,Y,Z\n")
-        ctx = CLI.resolve([str(csv_file), "--batch"])
+        ctx = CLI.resolve(["--batch", str(csv_file)])
         assert ctx.output_dir == Path(".").resolve()
 
     def test_verbose_flag(self, tmp_path: Path):
         csv_file = tmp_path / "x.csv"
         csv_file.write_text("first,last,smsf\nX,Y,Z\n")
-        ctx = CLI.resolve([str(csv_file), "--batch", "--verbose"])
+        ctx = CLI.resolve(["--batch", str(csv_file), "--verbose"])
         assert ctx.verbose is True
 
 
