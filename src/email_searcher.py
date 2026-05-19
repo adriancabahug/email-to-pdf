@@ -85,16 +85,30 @@ class EmailSearcher:
 
         for folder in self._iter_folders(strategy):
             try:
+                folder_name = getattr(folder, "Name", "Unknown")
                 items = folder.Items
-                items.Sort("[ReceivedTime]", True)
 
-                for msg in items:
-                    received = getattr(msg, "ReceivedTime", None)
-                    if received:
-                        if start_date and received < start_date:
-                            continue
-                        if end_date and received > end_date:
-                            continue
+                if start_date or end_date:
+                    date_conditions = []
+                    if start_date:
+                        start_str = start_date.strftime("%m/%d/%Y %I:%M %p")
+                        date_conditions.append(f"[ReceivedTime] >= '{start_str}'")
+                    if end_date:
+                        end_str = end_date.strftime("%m/%d/%Y %I:%M %p")
+                        date_conditions.append(f"[ReceivedTime] <= '{end_str}'")
+                    if date_conditions:
+                        date_query = " AND ".join(date_conditions)
+                        try:
+                            items = items.Restrict(date_query)
+                        except Exception as exc:
+                            logger.debug("Date restrict failed: %s", exc)
+
+                items.Sort("[ReceivedTime]", True)
+                total_items = getattr(items, "Count", 0)
+
+                for i, msg in enumerate(items, 1):
+                    if i % 100 == 0:
+                        logger.debug(f"Scanning {folder_name}: {i}/{total_items}")
 
                     text_to_search = " ".join([
                         str(getattr(msg, "SenderEmailAddress", "") or ""),
