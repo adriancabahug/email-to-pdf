@@ -59,13 +59,18 @@ class CLI:
         parser.add_argument(
             "--batch",
             metavar="FILE",
-            help="Path to CSV/JSON batch file (switches to batch mode)",
+            help="Path to CSV batch file (switches to batch mode)",
+        )
+        parser.add_argument(
+            "--batch-json",
+            metavar="FILE",
+            help="Path to JSON batch file with SMSF contexts (switches to batch mode)",
         )
         parser.add_argument(
             "--output",
             "-o",
             default=None,
-            help="Output directory for PDFs [default: %USERPROFILE%\\Documents\\EmailPDFs]",
+            help="Output directory for PDFs [default: %%USERPROFILE%%\\Documents\\EmailPDFs]",
         )
         parser.add_argument(
             "--verbose",
@@ -84,6 +89,26 @@ class CLI:
 
         if ns.batch:
             smsf_entries = cls._load_batch_file(Path(ns.batch))
+            return ExecutionContext(
+                mode=ExecutionMode.BATCH,
+                smsf_entries=smsf_entries,
+                output_dir=output_dir,
+                verbose=ns.verbose,
+            )
+
+        if ns.batch_json:
+            from src.batch_processor import BatchProcessor
+            processor = BatchProcessor()
+            contexts = processor.load_batch_input(Path(ns.batch_json))
+            smsf_entries = [
+                SMSFEntry(
+                    smsf=ctx.smsf_name,
+                    search_terms=ctx.director_names + ctx.director_emails,
+                    start_date=ctx.start_date or datetime.now(),
+                    end_date=ctx.end_date or datetime.now(),
+                )
+                for ctx in contexts
+            ]
             return ExecutionContext(
                 mode=ExecutionMode.BATCH,
                 smsf_entries=smsf_entries,

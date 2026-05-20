@@ -11,6 +11,8 @@ import sys
 from pathlib import Path
 from typing import Optional, Any
 
+logger = logging.getLogger(__name__)
+
 if getattr(sys, 'frozen', False):
     bundle_dir = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
     browser_path = os.path.join(bundle_dir, "playwright-browsers")
@@ -26,8 +28,6 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
     logger.warning("Playwright not available - PDF generation disabled")
-
-logger = logging.getLogger(__name__)
 
 DEFAULT_RECYCL_THRESHOLD = 50
 

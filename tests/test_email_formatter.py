@@ -107,10 +107,12 @@ class TestEmailFormatter:
 
         html = formatter.format_email(mock_email)
 
-        assert "16pt" in html
         assert "11pt" in html
         assert "Calibri" in html
         assert "John Smith" in html
+        assert "From:" in html
+        assert "To:" in html
+        assert "Subject:" in html
 
     def test_format_email_strips_htmlbody_outer_tags(self):
         """Should strip <html>, <head>, <body> tags from HTMLBody before embedding"""

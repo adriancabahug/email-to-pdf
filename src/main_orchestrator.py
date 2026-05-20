@@ -25,6 +25,12 @@ from src.cli import CLI, ExecutionContext, ExecutionMode, SMSFEntry
 from src.exceptions import LicenseInputUnavailableError, OutlookUnavailableError
 from src.dependencies import Dependencies, CompositionRoot
 from src.performance import get_tracker
+from src.smsf_context import SMSFContext as NewSMSFContext
+from src.advisor_domain_matcher import AdvisorDomainMatcher
+from src.search_rule_engine import SearchRuleEngine, RelevanceLevel
+from src.deduplication import CrossMailboxDeduplicator
+from src.advisor_pdf_grouping import AdvisorPDFGroupingEngine
+from src.timeframe_resolver import TimeframeResolver
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +78,11 @@ class MainOrchestrator:
         self._session: Optional[OutlookSessionManager] = None
         self._searcher: Optional[EmailSearcher] = None
         self._connected = False
+        self._advisor_matcher: Optional[AdvisorDomainMatcher] = None
+        self._search_engine: Optional[SearchRuleEngine] = None
+        self._deduplicator: Optional[CrossMailboxDeduplicator] = None
+        self._pdf_grouper: Optional[AdvisorPDFGroupingEngine] = None
+        self._timeframe_resolver: Optional[TimeframeResolver] = None
 
     # ------------------------------------------------------------------ #
     # Entry point
@@ -206,6 +217,51 @@ class MainOrchestrator:
                 self._store.mark_processed(ctx.smsf)
                 return 0
 
+            if self._search_engine and self._advisor_matcher:
+                new_smsf_ctx = NewSMSFContext(
+                    smsf_name=ctx.smsf,
+                    director_names=ctx.search_terms,
+                    director_emails=[],
+                    advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
+                )
+                relevant_emails = [
+                    e for e in emails
+                    if self._search_engine.is_relevant(e, new_smsf_ctx) != RelevanceLevel.NONE
+                ]
+                emails = relevant_emails
+
+                if not emails:
+                    self._progress.warning(ctx.smsf, "No relevant advisor emails found")
+                    self._store.mark_processed(ctx.smsf)
+                    return 0
+
+            with tracker.track("deduplication"):
+                if self._deduplicator:
+                    emails = self._deduplicator.deduplicate(emails)
+
+            if self._pdf_grouper and self._advisor_matcher and self._search_engine:
+                new_smsf_ctx = NewSMSFContext(
+                    smsf_name=ctx.smsf,
+                    director_names=ctx.search_terms,
+                    director_emails=[],
+                    advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
+                )
+                groups = self._pdf_grouper.group_emails(emails, new_smsf_ctx, self._advisor_matcher)
+
+                if groups:
+                    for group_name, group_emails in groups.items():
+                        with tracker.track("email_formatting"):
+                            html = self._email_formatter.format_multiple_emails(group_emails)
+
+                        with tracker.track("pdf_generation"):
+                            filename = f"{group_name}.pdf"
+                            path = self._file_mgr.save_pdf(html, filename.replace(".pdf", ""))
+
+                        if path:
+                            self._progress.complete(group_name, str(path))
+                    self._store.mark_processed(ctx.smsf)
+                    return 0
+
             with tracker.track("email_formatting"):
                 html = self._email_formatter.format_multiple_emails(emails)
 
@@ -240,6 +296,11 @@ class MainOrchestrator:
                     processed_store=self._deps.processed_store,
                     config_manager=self._config
                 )
+            self._advisor_matcher = AdvisorDomainMatcher()
+            self._search_engine = SearchRuleEngine(self._advisor_matcher)
+            self._deduplicator = CrossMailboxDeduplicator()
+            self._pdf_grouper = AdvisorPDFGroupingEngine(self._search_engine)
+            self._timeframe_resolver = TimeframeResolver()
             self._connected = True
             self._progress.print_info("Connected to Outlook successfully.")
             return True
