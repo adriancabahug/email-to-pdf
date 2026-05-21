@@ -1,0 +1,11 @@
+EMAIL-TO-PDF PERFORMANCE BENCHMARK
+Run at: 2026-05-22 04:52:03.253231
+
+HEAVY SMSF (Aura Super):
+  Time: 56.36 seconds
+  Emails: 224
+  Terms: ['Aura Super', 'andy.studt74@gmail.com', 'annaderdowski@yahoo.com', 'ventas', 'exceedia', 'shapesuper', 'earlypay', 'newwavelaw']
+
+LIGHT SMSF (Small Fund Pty Ltd):
+  Time: 54.92 seconds
+  Emails: 80
