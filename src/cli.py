@@ -39,6 +39,7 @@ class ExecutionContext:
     smsf_entries: List[SMSFEntry]
     output_dir: Path
     verbose: bool = False
+    use_async_engine: bool = False
 
 
 class CLI:
@@ -78,6 +79,11 @@ class CLI:
             action="store_true",
             help="Enable verbose logging",
         )
+        parser.add_argument(
+            "--async-engine",
+            action="store_true",
+            help="Use async Playwright pipeline (experimental, requires Playwright)",
+        )
         return parser
 
     @classmethod
@@ -94,6 +100,7 @@ class CLI:
                 smsf_entries=smsf_entries,
                 output_dir=output_dir,
                 verbose=ns.verbose,
+                use_async_engine=ns.async_engine,
             )
 
         if ns.batch_json:
@@ -114,6 +121,7 @@ class CLI:
                 smsf_entries=smsf_entries,
                 output_dir=output_dir,
                 verbose=ns.verbose,
+                use_async_engine=ns.async_engine,
             )
 
         if not cls._stdin_available():
@@ -124,6 +132,7 @@ class CLI:
             smsf_entries=[],
             output_dir=output_dir,
             verbose=ns.verbose,
+            use_async_engine=ns.async_engine,
         )
 
     # ------------------------------------------------------------------ #
@@ -166,6 +175,11 @@ class CLI:
     @staticmethod
     def _get_all_time_date_range() -> tuple[Optional[datetime], Optional[datetime]]:
         return None, None
+
+    @staticmethod
+    def _get_current_year_date_range() -> tuple[datetime, datetime]:
+        now = datetime.now()
+        return datetime(now.year, 1, 1), datetime(now.year, 12, 31, 23, 59, 59)
 
     @staticmethod
     def _parse_keywords(input_str: str) -> List[str]:
@@ -273,7 +287,6 @@ class CLI:
             raw = [raw]
 
         entries = []
-        current_year_start, current_year_end = CLI._get_current_year_date_range()
 
         for item in raw:
             smsf = str(item.get("smsf", item.get("id", "")))
@@ -285,8 +298,8 @@ class CLI:
             if not search_terms:
                 continue
 
-            start_date = CLI._parse_date(item.get("start_date")) or current_year_start
-            end_date = CLI._parse_date(item.get("end_date")) or current_year_end
+            start_date = CLI._parse_date(item.get("start_date"))
+            end_date = CLI._parse_date(item.get("end_date"))
 
             entries.append(SMSFEntry(
                 smsf=smsf,
@@ -299,7 +312,6 @@ class CLI:
     @staticmethod
     def _load_csv(path: Path) -> List[SMSFEntry]:
         entries = []
-        current_year_start, current_year_end = CLI._get_current_year_date_range()
 
         with path.open(newline="", encoding="utf-8") as fh:
             reader = csv.DictReader(fh)
@@ -313,8 +325,8 @@ class CLI:
                 if not search_terms:
                     continue
 
-                start_date = CLI._parse_date(row.get("start_date")) or current_year_start
-                end_date = CLI._parse_date(row.get("end_date")) or current_year_end
+                start_date = CLI._parse_date(row.get("start_date"))
+                end_date = CLI._parse_date(row.get("end_date"))
 
                 entries.append(SMSFEntry(
                     smsf=smsf,

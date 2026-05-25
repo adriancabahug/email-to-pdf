@@ -202,8 +202,6 @@ class OutlookSessionManager:
             try:
                 if not proc.is_running():
                     return True
-                if proc.status() == psutil.STATUS_NOT_RESPONDING:
-                    return True
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 pass
         return False

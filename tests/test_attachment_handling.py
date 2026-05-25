@@ -62,19 +62,19 @@ class TestEmailFormatter:
     def test_format_email_with_no_attachments(self):
         formatter = EmailFormatter()
         mock_email = MagicMock()
-        mock_email.SenderName = "John Doe"
-        mock_email.SenderEmailAddress = "john@example.com"
-        mock_email.To = "jane@example.com"
-        mock_email.CC = ""
-        mock_email.Subject = "Test Subject"
-        mock_email.HTMLBody = "<p>Hello world</p>"
-        mock_email.Body = "Hello world"
-        mock_email.SentOn = MagicMock()
-        mock_email.SentOn.year = 2024
-        mock_email.SentOn.month = 6
-        mock_email.SentOn.day = 15
-        mock_email.SentOn.hour = 10
-        mock_email.SentOn.minute = 30
+        mock_email.sender_name = "John Doe"
+        mock_email.sender_email = "john@example.com"
+        mock_email.to_recipients = "jane@example.com"
+        mock_email.cc_recipients = ""
+        mock_email.subject = "Test Subject"
+        mock_email.html_body = "<p>Hello world</p>"
+        mock_email.body = "Hello world"
+        mock_email.sent_on = MagicMock()
+        mock_email.sent_on.year = 2024
+        mock_email.sent_on.month = 6
+        mock_email.sent_on.day = 15
+        mock_email.sent_on.hour = 10
+        mock_email.sent_on.minute = 30
         mock_email.Attachments.Count = 0
 
         result = formatter.format_email(mock_email, include_attachments=True)
@@ -85,23 +85,23 @@ class TestEmailFormatter:
     def test_format_multiple_emails_produces_valid_html(self):
         formatter = EmailFormatter()
         mock_email = MagicMock()
-        mock_email.SenderName = "John Doe"
-        mock_email.SenderEmailAddress = "john@example.com"
-        mock_email.To = "jane@example.com"
-        mock_email.CC = ""
-        mock_email.Subject = "Test"
-        mock_email.HTMLBody = "<p>Test</p>"
-        mock_email.Body = "Test"
-        mock_email.SentOn = MagicMock()
-        mock_email.SentOn.year = 2024
-        mock_email.SentOn.month = 6
-        mock_email.SentOn.day = 15
-        mock_email.SentOn.hour = 10
-        mock_email.SentOn.minute = 30
+        mock_email.sender_name = "John Doe"
+        mock_email.sender_email = "john@example.com"
+        mock_email.to_recipients = "jane@example.com"
+        mock_email.cc_recipients = ""
+        mock_email.subject = "Test"
+        mock_email.html_body = "<p>Test</p>"
+        mock_email.body = "Test"
+        mock_email.sent_on = MagicMock()
+        mock_email.sent_on.year = 2024
+        mock_email.sent_on.month = 6
+        mock_email.sent_on.day = 15
+        mock_email.sent_on.hour = 10
+        mock_email.sent_on.minute = 30
         mock_email.Attachments.Count = 0
 
         result = formatter.format_multiple_emails([mock_email, mock_email])
         assert "<!DOCTYPE html>" in result
         assert "</html>" in result
         assert "John Doe" in result
-        assert result.count("email-container") == 2
+        assert result.count('class="owa-email-block"') == 2

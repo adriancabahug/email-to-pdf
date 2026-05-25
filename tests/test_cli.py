@@ -27,9 +27,9 @@ class TestArgumentParsing:
 
     def test_output_dir_default(self, tmp_path: Path):
         csv_file = tmp_path / "x.csv"
-        csv_file.write_text("first,last,smsf\nX,Y,Z\n")
+        csv_file.write_text("smsf,search_terms\nAura Super,term1\n")
         ctx = CLI.resolve(["--batch", str(csv_file)])
-        assert ctx.output_dir == Path(".").resolve()
+        assert ctx.output_dir is None
 
     def test_verbose_flag(self, tmp_path: Path):
         csv_file = tmp_path / "x.csv"

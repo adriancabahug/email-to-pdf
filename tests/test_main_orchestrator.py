@@ -10,7 +10,7 @@ import pytest
 from src.dependencies import Dependencies
 from src.cli import CLI, ExecutionContext, ExecutionMode, SMSFEntry
 from datetime import datetime
-from src.main_orchestrator import SMSFContext, MainOrchestrator, OutlookUnavailableError
+from src.main_orchestrator import SMSFSpec, MainOrchestrator, OutlookUnavailableError
 
 
 @pytest.fixture
@@ -84,6 +84,6 @@ class TestProcessDirector:
         orch = MainOrchestrator(batch_context, tmp_path, deps=fake_deps)
         _setup_session(orch, fake_deps)
 
-        ctx = SMSFContext(smsf="SMSF001", search_terms=["term1"], start_date=datetime(2025,1,1), end_date=datetime(2025,12,31), mode="batch", skip_if_processed=True)
+        ctx = SMSFSpec(smsf="SMSF001", search_terms=["term1"], start_date=datetime(2025,1,1), end_date=datetime(2025,12,31), mode="batch", skip_if_processed=True)
         assert orch._process_smsf(ctx) == 0
         fake_deps.progress_manager.skip.assert_called_once_with("SMSF001", "Already processed")

@@ -1,26 +1,31 @@
 """
 Orchestrates the end-to-end email-to-PDF pipeline.
 Uses PDFSession context manager to guarantee browser lifecycle.
+Includes SQLite cache integration and optimized body-scan avoidance.
+
+Provides AsyncPipelineOrchestrator for async producer-consumer pipeline
+that interleaves Outlook COM fetching with async Playwright PDF rendering.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from src.config_manager import ConfigManager
 from src.outlook_session_manager import OutlookSessionManager
-from src.email_searcher import EmailSearcher
+from src.email_searcher import EmailSearcher, ExtractedEmail
 from src.processed_directors_store import ProcessedDirectorsStore
 from src.email_formatter import EmailFormatter
 from src.file_manager import FileManager
 from src.license_validator import LicenseValidator
 from src.progress_manager import ProgressManager
-from src.pdf_generator import PDFGenerator, PDFSession
+from src.pdf_generator import PDFGenerator, PDFSession, AsyncPDFGenerator
 from src.cli import CLI, ExecutionContext, ExecutionMode, SMSFEntry
 from src.exceptions import LicenseInputUnavailableError, OutlookUnavailableError
 from src.dependencies import Dependencies, CompositionRoot
@@ -30,10 +35,10 @@ from src.advisor_domain_matcher import AdvisorDomainMatcher
 from src.search_rule_engine import SearchRuleEngine, RelevanceLevel
 from src.deduplication import CrossMailboxDeduplicator
 from src.advisor_pdf_grouping import AdvisorPDFGroupingEngine
-from src.timeframe_resolver import TimeframeResolver
+from src.cache_manager import EmailMetadataCache
+from src.folder_strategies import FastFolderStrategy
 
 logger = logging.getLogger(__name__)
-
 
 LICENSE_SERVER_URL = "https://email-to-pdf-license.email-to-pdf-license.workers.dev/validate"
 
@@ -44,13 +49,21 @@ def _get_default_output_base() -> Path:
 
 
 @dataclass(frozen=True)
-class SMSFContext:
+class SMSFSpec:
     smsf: str
     search_terms: list
     start_date: any
     end_date: any
     mode: str
     skip_if_processed: bool = True
+
+
+@dataclass
+class PDFJob:
+    """A single PDF rendering unit pushed through the async pipeline."""
+    group_name: str
+    emails: List[ExtractedEmail]
+    smsf_name: str
 
 
 class MainOrchestrator:
@@ -82,11 +95,11 @@ class MainOrchestrator:
         self._search_engine: Optional[SearchRuleEngine] = None
         self._deduplicator: Optional[CrossMailboxDeduplicator] = None
         self._pdf_grouper: Optional[AdvisorPDFGroupingEngine] = None
-        self._timeframe_resolver: Optional[TimeframeResolver] = None
+        self._cache: Optional[EmailMetadataCache] = None
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     # Entry point
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     def run(self) -> int:
         logger.info("Starting email-to-pdf orchestrator")
         license_key = self._license.prompt_and_validate()
@@ -114,9 +127,9 @@ class MainOrchestrator:
         finally:
             self._cleanup()
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     # Mode runners
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     def _run_batch(self) -> int:
         smsf_entries = self._context.smsf_entries
         if not smsf_entries:
@@ -129,7 +142,7 @@ class MainOrchestrator:
 
         failed = 0
         for entry in smsf_entries:
-            ctx = SMSFContext(
+            ctx = SMSFSpec(
                 smsf=entry.smsf,
                 search_terms=entry.search_terms,
                 start_date=entry.start_date,
@@ -155,7 +168,7 @@ class MainOrchestrator:
                 self._progress.print_warn(str(e))
                 continue
 
-            ctx = SMSFContext(
+            ctx = SMSFSpec(
                 smsf=user_input["smsf"],
                 search_terms=user_input["search_terms"],
                 start_date=user_input["start_date"],
@@ -170,10 +183,10 @@ class MainOrchestrator:
 
         return failed
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     # Unified pipeline
-    # ------------------------------------------------------------------ #
-    def _process_smsf(self, ctx: SMSFContext) -> int:
+    # ------------------------------------------------------------------
+    def _process_smsf(self, ctx: SMSFSpec) -> int:
         tracker = get_tracker()
         try:
             if ctx.skip_if_processed and self._store.is_processed(ctx.smsf):
@@ -184,7 +197,7 @@ class MainOrchestrator:
             if self._session and self._session.is_connected():
                 with tracker.track("folder_scan"):
                     try:
-                        strategy = self._searcher._FastFolderStrategy()
+                        strategy = FastFolderStrategy()
                         for _ in self._searcher._iter_folders(strategy):
                             folder_count += 1
                     except Exception:
@@ -207,7 +220,7 @@ class MainOrchestrator:
 
             from src.email_searcher import SearchEvent
             self._progress.display_search_event(
-                SearchEvent(type='complete', total=len(emails))
+                SearchEvent(type="complete", total=len(emails))
             )
 
             self._progress.stop()
@@ -217,6 +230,12 @@ class MainOrchestrator:
                 self._store.mark_processed(ctx.smsf)
                 return 0
 
+            # ------------------------------------------------------------------
+            # OPTIMIZED: Determine if body was already scanned by email_searcher
+            # This avoids double body extraction in search_rule_engine
+            # ------------------------------------------------------------------
+            had_body_scan = any(len(t) >= 5 for t in all_terms)
+
             if self._search_engine and self._advisor_matcher:
                 new_smsf_ctx = NewSMSFContext(
                     smsf_name=ctx.smsf,
@@ -224,16 +243,20 @@ class MainOrchestrator:
                     director_emails=[],
                     advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
                 )
+
+                # Pass body_already_scanned flag to avoid double body fetch
                 relevant_emails = [
                     e for e in emails
-                    if self._search_engine.is_relevant(e, new_smsf_ctx) != RelevanceLevel.NONE
+                    if self._search_engine.is_relevant(
+                        e, new_smsf_ctx, body_already_scanned=had_body_scan
+                    ) != RelevanceLevel.NONE
                 ]
                 emails = relevant_emails
 
-                if not emails:
-                    self._progress.warning(ctx.smsf, "No relevant advisor emails found")
-                    self._store.mark_processed(ctx.smsf)
-                    return 0
+            if not emails:
+                self._progress.warning(ctx.smsf, "No relevant advisor emails found")
+                self._store.mark_processed(ctx.smsf)
+                return 0
 
             with tracker.track("deduplication"):
                 if self._deduplicator:
@@ -246,16 +269,22 @@ class MainOrchestrator:
                     director_emails=[],
                     advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
                 )
-                groups = self._pdf_grouper.group_emails(emails, new_smsf_ctx, self._advisor_matcher)
+                groups = self._pdf_grouper.group_emails(
+                    emails, new_smsf_ctx, self._advisor_matcher
+                )
 
                 if groups:
                     for group_name, group_emails in groups.items():
                         with tracker.track("email_formatting"):
-                            html = self._email_formatter.format_multiple_emails(group_emails)
+                            html = self._email_formatter.format_multiple_emails(
+                                group_emails
+                            )
 
                         with tracker.track("pdf_generation"):
                             filename = f"{group_name}.pdf"
-                            path = self._file_mgr.save_pdf(html, filename.replace(".pdf", ""))
+                            path = self._file_mgr.save_pdf(
+                                html, filename.replace(".pdf", "")
+                            )
 
                         if path:
                             self._progress.complete(group_name, str(path))
@@ -269,7 +298,9 @@ class MainOrchestrator:
                 path = self._file_mgr.save_pdf(html, ctx.smsf)
 
             if not path:
-                self._progress.error(ctx.smsf, "PDF generation failed — SMSF not marked processed")
+                self._progress.error(
+                    ctx.smsf, "PDF generation failed - SMSF not marked processed"
+                )
                 return 1
 
             self._store.mark_processed(ctx.smsf)
@@ -280,27 +311,35 @@ class MainOrchestrator:
             self._session.disconnect()
             raise
         except Exception as exc:
+            logger.exception("SMSF processing failed: %s", ctx.smsf)
             self._progress.error(ctx.smsf, str(exc))
             return 1
-
     def _connect_to_outlook(self) -> bool:
         self._session = self._deps.session_manager
         success = self._session.connect()
 
         if success and self._session.is_connected():
+            # Initialize cache
+            self._cache = self._deps.cache
+
+            if self._cache:
+                self._progress.print_info("SQLite cache initialized")
+            else:
+                self._progress.print_warn("Cache unavailable - running live Outlook mode")
+
             if self._deps.email_searcher:
                 self._searcher = self._deps.email_searcher
             else:
                 self._searcher = EmailSearcher(
                     session_manager=self._session,
                     processed_store=self._deps.processed_store,
-                    config_manager=self._config
+                    config_manager=self._config,
+                    cache=self._cache,
                 )
-            self._advisor_matcher = AdvisorDomainMatcher()
-            self._search_engine = SearchRuleEngine(self._advisor_matcher)
-            self._deduplicator = CrossMailboxDeduplicator()
-            self._pdf_grouper = AdvisorPDFGroupingEngine(self._search_engine)
-            self._timeframe_resolver = TimeframeResolver()
+            (self._advisor_matcher,
+             self._search_engine,
+             self._deduplicator,
+             self._pdf_grouper) = CompositionRoot.build_pipeline_components()
             self._connected = True
             self._progress.print_info("Connected to Outlook successfully.")
             return True
@@ -308,6 +347,11 @@ class MainOrchestrator:
         return False
 
     def _cleanup(self) -> None:
+        if self._cache:
+            try:
+                self._cache.close()
+            except Exception as exc:
+                logger.debug("Cache close warning: %s", exc)
         if self._connected and self._session:
             self._session.disconnect()
             self._progress.print_info("Outlook connection closed.")
@@ -316,6 +360,276 @@ class MainOrchestrator:
         self._progress._console.print("\n" + "=" * 60)
         self._progress._console.print("[bold cyan]EMAIL TO PDF AUTOMATION TOOL[/bold cyan]")
         self._progress._console.print("=" * 60 + "\n")
+
+
+class AsyncPipelineOrchestrator:
+    """
+    Async producer-consumer pipeline that interleaves Outlook COM fetching
+    (producer, sync) with async Playwright PDF rendering (consumer).
+
+    Because win32com must stay on the main thread but Playwright is naturally
+    async, we wrap the pipeline in an asyncio event loop. The producer yields
+    when pushing to the queue, allowing the consumer to render PDFs concurrently.
+
+    Queue maxsize=50 provides backpressure — prevents memory ballooning
+    when the consumer is slower than the producer.
+    """
+
+    def __init__(
+        self,
+        deps: Dependencies,
+        output_base: Path,
+    ) -> None:
+        self._deps = deps
+        self._output_base = output_base
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=50)
+        self._failed_count = 0
+        self._progress = deps.progress_manager
+
+        self._searcher: Optional[EmailSearcher] = None
+        self._session: Optional[OutlookSessionManager] = None
+        self._advisor_matcher: Optional[AdvisorDomainMatcher] = None
+        self._search_engine: Optional[SearchRuleEngine] = None
+        self._deduplicator: Optional[CrossMailboxDeduplicator] = None
+        self._pdf_grouper: Optional[AdvisorPDFGroupingEngine] = None
+        self._store: Optional[ProcessedDirectorsStore] = None
+
+    # ------------------------------------------------------------------
+    # Entry point (call via asyncio.run)
+    # ------------------------------------------------------------------
+    async def run(self, smsf_ctxs: List[SMSFSpec]) -> int:
+        if not smsf_ctxs:
+            return 0
+
+        pdf_gen = AsyncPDFGenerator()
+        if not await pdf_gen.start():
+            self._progress.error("SYSTEM", "Failed to start async PDF engine")
+            return 1
+
+        try:
+            await asyncio.gather(
+                self._producer(smsf_ctxs),
+                self._consumer(pdf_gen),
+            )
+            return self._failed_count
+        except OutlookUnavailableError:
+            raise
+        except Exception as exc:
+            logger.exception("Async pipeline failed: %s", exc)
+            return 1
+        finally:
+            await pdf_gen.stop()
+
+    # ------------------------------------------------------------------
+    # Producer: sync COM on main thread, yields at queue.put
+    # ------------------------------------------------------------------
+    async def _producer(self, smsf_ctxs: List[SMSFSpec]) -> None:
+        for ctx in smsf_ctxs:
+            try:
+                if ctx.skip_if_processed and self._store and self._store.is_processed(ctx.smsf):
+                    self._progress.skip(ctx.smsf, "Already processed")
+                    continue
+
+                all_terms = [ctx.smsf] + ctx.search_terms
+                had_body_scan = any(len(t) >= 5 for t in all_terms)
+
+                self._progress.start(ctx.smsf)
+                emails = self._searcher.search(
+                    all_terms, ctx.start_date, ctx.end_date,
+                    on_event=lambda e: self._progress.display_search_event(e),
+                )
+                self._progress.stop()
+
+                if not emails:
+                    self._progress.warning(ctx.smsf, "No emails matched criteria")
+                    if self._store:
+                        self._store.mark_processed(ctx.smsf)
+                    continue
+
+                # Score relevance
+                if self._search_engine and self._advisor_matcher:
+                    new_ctx = NewSMSFContext(
+                        smsf_name=ctx.smsf,
+                        director_names=ctx.search_terms,
+                        director_emails=[],
+                        advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
+                    )
+                    emails = [
+                        e for e in emails
+                        if self._search_engine.is_relevant(
+                            e, new_ctx, body_already_scanned=had_body_scan
+                        ) != RelevanceLevel.NONE
+                    ]
+
+                if not emails:
+                    self._progress.warning(ctx.smsf, "No relevant advisor emails found")
+                    if self._store:
+                        self._store.mark_processed(ctx.smsf)
+                    continue
+
+                # Deduplicate
+                if self._deduplicator:
+                    emails = self._deduplicator.deduplicate(emails)
+
+                # Group by advisor
+                groups = None
+                if self._pdf_grouper and self._advisor_matcher and self._search_engine:
+                    new_ctx = NewSMSFContext(
+                        smsf_name=ctx.smsf,
+                        director_names=ctx.search_terms,
+                        director_emails=[],
+                        advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
+                    )
+                    groups = self._pdf_grouper.group_emails(
+                        emails, new_ctx, self._advisor_matcher
+                    )
+
+                if groups:
+                    for group_name, group_emails in groups.items():
+                        await self._queue.put(PDFJob(
+                            group_name=group_name,
+                            emails=group_emails,
+                            smsf_name=ctx.smsf,
+                        ))
+                else:
+                    # No advisor grouping — single fallback PDF
+                    await self._queue.put(PDFJob(
+                        group_name=ctx.smsf,
+                        emails=emails,
+                        smsf_name=ctx.smsf,
+                    ))
+
+                if self._store:
+                    self._store.mark_processed(ctx.smsf)
+
+            except OutlookUnavailableError:
+                raise
+            except Exception as exc:
+                logger.exception("Producer failed for SMSF %s: %s", ctx.smsf, exc)
+                self._progress.error(ctx.smsf, str(exc))
+                self._failed_count += 1
+
+        await self._queue.put(None)  # Poison pill signals consumer to stop
+
+    # ------------------------------------------------------------------
+    # Consumer: async Playwright, pulls jobs from queue
+    # ------------------------------------------------------------------
+    async def _consumer(self, pdf_gen: AsyncPDFGenerator) -> None:
+        while True:
+            job = await self._queue.get()
+            if job is None:
+                self._queue.task_done()
+                break
+
+            try:
+                html = self._deps.email_formatter.format_multiple_emails(job.emails)
+                folder = self._output_base / job.smsf_name
+                folder.mkdir(parents=True, exist_ok=True)
+                filename = f"{job.group_name}.pdf"
+                path = folder / filename
+                success = await pdf_gen.generate_pdf(html, path)
+                if success:
+                    self._progress.complete(job.group_name, str(path))
+                else:
+                    logger.error("PDF generation failed for %s", job.group_name)
+                    self._failed_count += 1
+            except Exception as exc:
+                logger.exception("Consumer failed for %s: %s", job.group_name, exc)
+                self._failed_count += 1
+            finally:
+                self._queue.task_done()
+
+    # ------------------------------------------------------------------
+    # Initialize Outlook searcher and pipeline components
+    # ------------------------------------------------------------------
+    def connect(self) -> bool:
+        session = self._deps.session_manager
+        if not session or not session.connect() or not session.is_connected():
+            return False
+
+        self._session = session
+        self._searcher = self._deps.email_searcher or EmailSearcher(
+            session_manager=session,
+            processed_store=self._deps.processed_store,
+            config_manager=self._deps.config_manager,
+            cache=self._deps.cache,
+        )
+        self._store = self._deps.processed_store
+        (self._advisor_matcher,
+         self._search_engine,
+         self._deduplicator,
+         self._pdf_grouper) = CompositionRoot.build_pipeline_components()
+        return True
+
+
+async def async_main(exec_context: ExecutionContext) -> int:
+    """
+    Async entry point. Validates license, connects to Outlook,
+    and runs the async producer-consumer pipeline.
+    """
+    try:
+        output_base = exec_context.output_dir or _get_default_output_base()
+        deps = CompositionRoot(output_base).build()
+
+        license_key = deps.license_validator.prompt_and_validate()
+        if not license_key:
+            sys.stderr.write("ERROR: License validation failed\n")
+            sys.stderr.flush()
+            return 1
+
+        orchestrator = AsyncPipelineOrchestrator(deps, output_base)
+
+        if not orchestrator.connect():
+            sys.stderr.write("ERROR: Could not connect to Outlook. Ensure Outlook is open.\n")
+            sys.stderr.flush()
+            return 1
+
+        if exec_context.mode == ExecutionMode.BATCH:
+            smsf_ctxs = [
+                SMSFSpec(
+                    smsf=e.smsf,
+                    search_terms=e.search_terms,
+                    start_date=e.start_date,
+                    end_date=e.end_date,
+                    mode="batch",
+                    skip_if_processed=True,
+                )
+                for e in (exec_context.smsf_entries or [])
+            ]
+        else:
+            cli = CLI()
+            smsf_ctxs = []
+            while True:
+                try:
+                    user_input = cli.get_smsf_input()
+                except ValueError as e:
+                    sys.stderr.write(f"ERROR: {e}\n")
+                    continue
+                smsf_ctxs.append(SMSFSpec(
+                    smsf=user_input["smsf"],
+                    search_terms=user_input["search_terms"],
+                    start_date=user_input["start_date"],
+                    end_date=user_input["end_date"],
+                    mode="interactive",
+                    skip_if_processed=False,
+                ))
+                if not cli.prompt_continue():
+                    break
+
+        result = await orchestrator.run(smsf_ctxs)
+        return result
+
+    except LicenseInputUnavailableError as e:
+        sys.stderr.write(f"ERROR: {e}\n")
+        sys.stderr.flush()
+        return 1
+    except OutlookUnavailableError as e:
+        sys.stderr.write(f"ERROR: Outlook connection lost: {e}\n")
+        sys.stderr.flush()
+        return 1
+    except Exception as exc:
+        logger.exception("Fatal error in async pipeline: %s", exc)
+        return 1
 
 
 def main(argv: Optional[list] = None) -> int:

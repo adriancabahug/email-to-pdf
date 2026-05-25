@@ -1,12 +1,27 @@
 """
-Advisor Domain Matcher - Maps advisor email domains to canonical organization names.
+Advisor Domain Matcher
+
+Maps advisor email domains to canonical organization names.
+
+Responsibilities:
+- Match email addresses to advisor organizations
+- Normalize domains
+- Exclude internal domains
+- Group emails by advisor organization
 """
 
+from __future__ import annotations
+
+import re
+
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Set
 
 
-INTERNAL_DOMAIN = "eastcoastinc.com.au"
+INTERNAL_DOMAINS = {
+    "eastcoastinc.com.au",
+}
+
 
 DEFAULT_DOMAIN_MAPPINGS = {
     "ventasadvisory.com.au": "Ventas",
@@ -21,8 +36,15 @@ DEFAULT_DOMAIN_MAPPINGS = {
     "auspost.com.au": "AusPost",
     "xero.com": "Xero",
     "keypay.com.au": "KeyPay",
-    "earlypay.com.au": "Earlypay"
+    "earlypay.com.au": "EarlyPay",
+    "newwavelaw.com.au": "NewWaveLaw",
 }
+
+
+EMAIL_REGEX = re.compile(
+    r"[\w\.-]+@[\w\.-]+\.\w+",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -32,15 +54,39 @@ class Organization:
 
 
 class AdvisorDomainMatcher:
+    """
+    Domain-to-organization resolution engine.
+    """
+
     def __init__(
         self,
         custom_domain_mappings: Optional[Dict[str, str]] = None,
     ):
-        self._domain_to_org: Dict[str, str] = DEFAULT_DOMAIN_MAPPINGS.copy()
+        self._domain_to_org: Dict[str, str] = {
+            k.lower(): v
+            for k, v in DEFAULT_DOMAIN_MAPPINGS.items()
+        }
+
         if custom_domain_mappings:
-            self._domain_to_org.update(custom_domain_mappings)
+            self._domain_to_org.update({
+                k.lower(): v
+                for k, v in custom_domain_mappings.items()
+            })
+
+    # ------------------------------------------------------------------
+    # PUBLIC API
+    # ------------------------------------------------------------------
+
+    def get_domains(self) -> List[str]:
+        """
+        Return all advisor domains.
+        """
+        return list(self._domain_to_org.keys())
 
     def match(self, email_address: str) -> Optional[Organization]:
+        """
+        Match an email address to a known advisor organization.
+        """
         if not email_address:
             return None
 
@@ -49,35 +95,54 @@ class AdvisorDomainMatcher:
         if "@" not in email_lower:
             return None
 
-        domain = email_lower.split("@")[1]
+        try:
+            domain = email_lower.split("@", 1)[1]
+        except Exception:
+            return None
 
         if self._is_internal_domain(domain):
             return None
 
         canonical_domain = self.get_canonical_domain(domain)
+
         if not canonical_domain:
             return None
 
         org_name = self._domain_to_org.get(canonical_domain)
-        if org_name:
-            return Organization(name=org_name, canonical_domain=canonical_domain)
 
-        return None
+        if not org_name:
+            return None
 
-    def _is_internal_domain(self, domain: str) -> bool:
-        return domain == INTERNAL_DOMAIN or domain.endswith(f".{INTERNAL_DOMAIN}")
+        return Organization(
+            name=org_name,
+            canonical_domain=canonical_domain,
+        )
 
     def get_canonical_domain(self, domain: str) -> str:
-        domain_lower = domain.lower()
+        """
+        Normalize subdomains to canonical domains.
+
+        Example:
+            mail.ventasadvisory.com.au
+                -> ventasadvisory.com.au
+
+        Returns the input domain unchanged if no canonical mapping exists.
+        """
+        if not domain:
+            return domain
+
+        domain_lower = domain.lower().strip()
 
         if domain_lower in self._domain_to_org:
             return domain_lower
 
         parts = domain_lower.split(".")
-        for i in range(len(parts) - 1, 0, -1):
-            suffix = ".".join(parts[i:])
-            if suffix in self._domain_to_org:
-                return suffix
+
+        for i in range(len(parts)):
+            candidate = ".".join(parts[i:])
+
+            if candidate in self._domain_to_org:
+                return candidate
 
         return domain_lower
 
@@ -88,25 +153,59 @@ class AdvisorDomainMatcher:
         get_to: str = "to_recipients",
         get_cc: str = "cc_recipients",
     ) -> Dict[Organization, List[Any]]:
+        """
+        Group emails by advisor organization.
+        """
+
         groups: Dict[Organization, List[Any]] = {}
 
         for email in emails:
-            sender = getattr(email, get_sender, "")
-            to = getattr(email, get_to, "")
-            cc = getattr(email, get_cc, "")
-
-            all_addresses = f"{sender} {to} {cc}"
-            matched_orgs = set()
-
-            for addr in all_addresses.split():
-                if "@" in addr:
-                    org = self.match(addr)
-                    if org:
-                        matched_orgs.add(org)
+            matched_orgs = self._extract_organizations(
+                email,
+                get_sender,
+                get_to,
+                get_cc,
+            )
 
             for org in matched_orgs:
-                if org not in groups:
-                    groups[org] = []
-                groups[org].append(email)
+                groups.setdefault(org, []).append(email)
 
         return groups
+
+    # ------------------------------------------------------------------
+    # INTERNALS
+    # ------------------------------------------------------------------
+
+    def _extract_organizations(
+        self,
+        email: Any,
+        get_sender: str,
+        get_to: str,
+        get_cc: str,
+    ) -> Set[Organization]:
+        matched_orgs: Set[Organization] = set()
+
+        sender = str(getattr(email, get_sender, "") or "")
+        to = str(getattr(email, get_to, "") or "")
+        cc = str(getattr(email, get_cc, "") or "")
+
+        combined = f"{sender} {to} {cc}"
+
+        addresses = EMAIL_REGEX.findall(combined)
+
+        for addr in addresses:
+            org = self.match(addr)
+
+            if org:
+                matched_orgs.add(org)
+
+        return matched_orgs
+
+    def _is_internal_domain(self, domain: str) -> bool:
+        domain = domain.lower().strip()
+
+        return any(
+            domain == internal
+            or domain.endswith(f".{internal}")
+            for internal in INTERNAL_DOMAINS
+        )

@@ -9,8 +9,10 @@ import pytest
 
 from src.email_searcher import (
     EmailSearcher,
-    _FastFolderStrategy,
-    _DeepFolderStrategy,
+)
+from src.folder_strategies import (
+    FastFolderStrategy as _FastFolderStrategy,
+    DeepFolderStrategy as _DeepFolderStrategy,
 )
 
 

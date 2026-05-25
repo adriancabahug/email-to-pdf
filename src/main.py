@@ -3,6 +3,7 @@
 Entry point for the frozen EXE.
 """
 
+import asyncio
 import sys
 from pathlib import Path
 
@@ -14,7 +15,7 @@ else:
 sys.path.insert(0, str(base_path))
 
 from src.cli import CLI
-from src.main_orchestrator import MainOrchestrator
+from src.main_orchestrator import MainOrchestrator, async_main
 
 
 def main() -> int:
@@ -22,6 +23,11 @@ def main() -> int:
         context = CLI.resolve()
     except SystemExit as e:
         return e.code if isinstance(e.code, int) else 1
+
+    if context.use_async_engine:
+        if sys.platform == "win32":
+            asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        return asyncio.run(async_main(context))
 
     orchestrator = MainOrchestrator(
         context=context,

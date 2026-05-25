@@ -5,14 +5,15 @@ from src.email_formatter import EmailFormatter
 
 class MockEmail:
     def __init__(self, html_body=None, plain_body="", **kwargs):
-        self.HTMLBody = html_body
-        self.Body = plain_body
-        self.SenderName = kwargs.get('SenderName', 'Test Sender')
-        self.SenderEmailAddress = kwargs.get('SenderEmailAddress', 'test@sender.com')
-        self.To = kwargs.get('To', 'recipient@test.com')
-        self.CC = kwargs.get('CC', '')
-        self.Subject = kwargs.get('Subject', 'Test Subject')
-        self.SentOn = kwargs.get('SentOn', '2025-01-15')
+        self.html_body = html_body
+        self.body = plain_body
+        self.sender_name = kwargs.get('sender_name') or kwargs.get('SenderName', 'Test Sender')
+        self.sender_email = kwargs.get('sender_email') or kwargs.get('SenderEmailAddress', 'test@sender.com')
+        self.to_recipients = kwargs.get('to_recipients') or kwargs.get('To', 'recipient@test.com')
+        self.cc_recipients = kwargs.get('cc_recipients') or kwargs.get('CC', '')
+        self.bcc_recipients = kwargs.get('bcc_recipients') or kwargs.get('BCC', '')
+        self.subject = kwargs.get('subject') or kwargs.get('Subject', 'Test Subject')
+        self.sent_on = kwargs.get('sent_on') or kwargs.get('SentOn', '2025-01-15')
 
 
 class TestHTMLBodyUsage:

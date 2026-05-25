@@ -22,6 +22,7 @@ class MockEmail:
         subject="",
         body="",
         sent_on=None,
+        sender_name="",
     ):
         self.sender_email = sender_email
         self.to_recipients = to_recipients
@@ -29,30 +30,7 @@ class MockEmail:
         self.subject = subject
         self.body = body
         self.sent_on = sent_on
-
-    @property
-    def SenderEmailAddress(self):
-        return self.sender_email
-
-    @property
-    def To(self):
-        return self.to_recipients
-
-    @property
-    def CC(self):
-        return self.cc_recipients
-
-    @property
-    def Subject(self):
-        return self.subject
-
-    @property
-    def Body(self):
-        return self.body
-
-    @property
-    def SentOn(self):
-        return self.sent_on
+        self.sender_name = sender_name
 
 
 class TestGroupEmailsByOrganization:

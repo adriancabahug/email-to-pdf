@@ -42,11 +42,7 @@ class AdvisorPDFGroupingEngine:
         return org_groups
 
     def _get_advisor_organization(self, email: Any, matcher: AdvisorDomainMatcher) -> Any:
-        sender = getattr(email, "SenderEmailAddress", "")
-        to = getattr(email, "To", "")
-        cc = getattr(email, "CC", "")
-
-        all_addresses = f"{sender} {to} {cc}"
+        all_addresses = f"{email.sender_email} {email.to_recipients} {email.cc_recipients}"
 
         for addr in all_addresses.split():
             if "@" in addr:
@@ -57,16 +53,7 @@ class AdvisorPDFGroupingEngine:
         return None
 
     def _sort_chronologically(self, emails: List[Any]) -> List[Any]:
-        def get_date(email: Any) -> datetime:
-            sent_on = getattr(email, "SentOn", None)
-            if sent_on:
-                if isinstance(sent_on, datetime):
-                    return sent_on
-                if hasattr(sent_on, "year"):
-                    return sent_on
-            return datetime.min
-
-        return sorted(emails, key=get_date)
+        return sorted(emails, key=lambda e: e.sent_on or datetime.min)
 
     def generate_pdf_path(self, organization: str, smsf_name: str) -> Path:
         filename = f"{organization} - {smsf_name}.pdf"

@@ -1,10 +1,13 @@
 """
 PDF generation via Playwright. Singleton removed in favor of explicit
 instance lifecycle managed by a context manager.
+
+Includes AsyncPDFGenerator for the async producer-consumer pipeline.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -28,6 +31,13 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
     logger.warning("Playwright not available - PDF generation disabled")
+
+try:
+    from playwright.async_api import async_playwright
+    ASYNC_PLAYWRIGHT_AVAILABLE = True
+except ImportError:
+    ASYNC_PLAYWRIGHT_AVAILABLE = False
+    logger.warning("Async Playwright not available")
 
 DEFAULT_RECYCL_THRESHOLD = 50
 
@@ -138,8 +148,10 @@ class PDFGenerator:
 
             try:
                 os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+                with open(html_file_path, 'r', encoding='utf-8') as fh:
+                    html_content = fh.read()
                 page = self._browser.new_page()
-                page.goto(f"file:///{html_file_path}", wait_until='networkidle')
+                page.set_content(html_content, wait_until='load')
                 page.pdf(
                     path=output_path,
                     print_background=True,
@@ -186,3 +198,84 @@ class PDFSession:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self._gen.stop()
+
+
+class AsyncPDFGenerator:
+    """
+    Async Playwright wrapper for the producer-consumer pipeline.
+    Uses async_playwright so the consumer can yield control to the
+    producer while Chromium renders PDFs.
+    """
+
+    def __init__(self, recycle_threshold: int = DEFAULT_RECYCL_THRESHOLD) -> None:
+        self._playwright: Optional[Any] = None
+        self._browser: Optional[Any] = None
+        self._recycle_threshold = recycle_threshold
+        self._pdf_count = 0
+
+    async def start(self) -> bool:
+        if not ASYNC_PLAYWRIGHT_AVAILABLE:
+            logger.warning("Async Playwright not available")
+            return False
+        if self._browser is not None:
+            return True
+        try:
+            self._playwright = await async_playwright().start()
+            self._browser = await self._playwright.chromium.launch(headless=True)
+            logger.info("Async Playwright browser launched")
+            return True
+        except Exception as exc:
+            logger.error("Failed to start async Playwright: %s", exc)
+            return False
+
+    async def stop(self) -> None:
+        if self._browser:
+            try:
+                await self._browser.close()
+            except Exception as exc:
+                logger.warning("Async browser close warning: %s", exc)
+            self._browser = None
+        if self._playwright:
+            try:
+                await self._playwright.stop()
+            except Exception as exc:
+                logger.warning("Async Playwright stop warning: %s", exc)
+            self._playwright = None
+        self._pdf_count = 0
+        logger.info("Async Playwright resources released")
+
+    async def generate_pdf(self, html: str, output_path: Path) -> bool:
+        if not ASYNC_PLAYWRIGHT_AVAILABLE or self._browser is None:
+            return False
+        try:
+            os.makedirs(output_path.parent, exist_ok=True)
+            page = await self._browser.new_page()
+            await page.set_content(html, wait_until="networkidle")
+            await page.pdf(
+                path=str(output_path),
+                format="A4",
+                print_background=True,
+                margin={
+                    "top": "20mm",
+                    "bottom": "20mm",
+                    "left": "15mm",
+                    "right": "15mm",
+                },
+            )
+            await page.close()
+            self._pdf_count += 1
+            logger.info("Async PDF written: %s", output_path)
+
+            if self._pdf_count >= self._recycle_threshold:
+                logger.info("Browser recycle threshold reached (%d), restarting", self._recycle_threshold)
+                await self._restart_browser()
+
+            return True
+        except Exception as exc:
+            logger.error("Async PDF generation failed: %s", exc)
+            return False
+
+    async def _restart_browser(self) -> bool:
+        await self.stop()
+        self._pdf_count = 0
+        return await self.start()

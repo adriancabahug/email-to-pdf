@@ -5,16 +5,17 @@ from src.email_formatter import EmailFormatter
 
 
 class MockEmail:
-    """Mock email for testing"""
+    """Mock email for testing - attribute access matches ExtractedEmail fields"""
     def __init__(self, **kwargs):
-        self.SenderName = kwargs.get('SenderName', 'Test Sender')
-        self.SenderEmailAddress = kwargs.get('SenderEmailAddress', 'test@sender.com')
-        self.To = kwargs.get('To', 'recipient@test.com')
-        self.CC = kwargs.get('CC', '')
-        self.Subject = kwargs.get('Subject', 'Test Subject')
-        self.Body = kwargs.get('Body', 'Test body content')
-        self.HTMLBody = kwargs.get('HTMLBody', None)
-        self.SentOn = kwargs.get('SentOn', '2025-01-15 10:30:00')
+        self.sender_name = kwargs.get('sender_name') or kwargs.get('SenderName', 'Test Sender')
+        self.sender_email = kwargs.get('sender_email') or kwargs.get('SenderEmailAddress', 'test@sender.com')
+        self.to_recipients = kwargs.get('to_recipients') or kwargs.get('To', 'recipient@test.com')
+        self.cc_recipients = kwargs.get('cc_recipients') or kwargs.get('CC', '')
+        self.bcc_recipients = kwargs.get('bcc_recipients') or kwargs.get('BCC', '')
+        self.subject = kwargs.get('subject') or kwargs.get('Subject', 'Test Subject')
+        self.body = kwargs.get('body') or kwargs.get('Body', 'Test body content')
+        self.html_body = kwargs.get('html_body') or kwargs.get('HTMLBody', None)
+        self.sent_on = kwargs.get('sent_on') or kwargs.get('SentOn', '2025-01-15 10:30:00')
 
 
 class TestEmailFormatter:
@@ -89,11 +90,11 @@ class TestEmailFormatter:
 
         html = formatter.format_email(mock_email)
 
-        assert "CC:" in html
+        assert "Cc:" in html
         assert "alyssa@accounting.com" in html
 
     def test_format_email_outlook_style_header(self):
-        """Header should use Outlook-style typography: 16pt sender name, 11pt Calibri"""
+        """Header should include From, To, Subject fields"""
         formatter = EmailFormatter()
         mock_email = MockEmail(
             SenderName="John Smith",
@@ -107,8 +108,6 @@ class TestEmailFormatter:
 
         html = formatter.format_email(mock_email)
 
-        assert "11pt" in html
-        assert "Calibri" in html
         assert "John Smith" in html
         assert "From:" in html
         assert "To:" in html
@@ -132,16 +131,16 @@ class TestEmailFormatter:
         assert "<p>Hello</p>" in html
 
     def test_format_email_has_page_break_styling(self):
-        """Email container should have page-break-inside: avoid"""
+        """Email container should have owa-email-block class"""
         formatter = EmailFormatter()
         mock_email = MockEmail()
 
         html = formatter.format_email(mock_email)
 
-        assert "page-break-inside: avoid" in html
+        assert 'class="owa-email-block"' in html
 
     def test_format_email_plain_text_fallback(self):
-        """Should wrap plain text in <pre> with Calibri font when no HTMLBody"""
+        """Should wrap plain text in <pre> when no HTMLBody"""
         formatter = EmailFormatter()
         mock_email = MockEmail(
             HTMLBody=None,
@@ -151,7 +150,6 @@ class TestEmailFormatter:
         html = formatter.format_email(mock_email)
 
         assert "<pre" in html
-        assert "Calibri" in html
         assert "Plain text content" in html
 
     def test_format_email_preserves_html_body(self):
@@ -266,7 +264,7 @@ class TestMultipleEmailsWithHeaderBanners:
     """Test format_multiple_emails with header banners and page breaks"""
 
     def test_format_multiple_emails_adds_header_banner(self):
-        """Each email should have a header banner with index, from, to, date, subject"""
+        """Each email should have a header with from, to, date, subject"""
         formatter = EmailFormatter()
         emails = [
             MockEmail(Subject="Email 1", SenderEmailAddress="alice@test.com", To="bob@test.com", SentOn="2025-01-15"),
@@ -275,13 +273,13 @@ class TestMultipleEmailsWithHeaderBanners:
 
         html = formatter.format_multiple_emails(emails)
 
-        assert "Email 1 of 2" in html
-        assert "Email 2 of 2" in html
+        assert "Email 1" in html
+        assert "Email 2" in html
         assert "alice@test.com" in html
         assert "bob@test.com" in html
 
     def test_format_multiple_emails_has_page_breaks(self):
-        """Each email should start on a new page"""
+        """Each email should have a page break after it"""
         formatter = EmailFormatter()
         emails = [
             MockEmail(Subject="Email 1"),
@@ -291,7 +289,7 @@ class TestMultipleEmailsWithHeaderBanners:
 
         html = formatter.format_multiple_emails(emails)
 
-        assert "page-break-before: always" in html
+        assert "page-break-after: always" in html
 
     def test_format_multiple_emails_chronological_order(self):
         """Emails should appear in chronological order (oldest first)"""

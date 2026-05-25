@@ -21,32 +21,14 @@ class FakeEmail:
         cc_recipients="",
         subject="",
         body="",
+        sender_name="",
     ):
         self.sender_email = sender_email
         self.to_recipients = to_recipients
         self.cc_recipients = cc_recipients
         self.subject = subject
         self.body = body
-
-    @property
-    def SenderEmailAddress(self):
-        return self.sender_email
-
-    @property
-    def To(self):
-        return self.to_recipients
-
-    @property
-    def CC(self):
-        return self.cc_recipients
-
-    @property
-    def Subject(self):
-        return self.subject
-
-    @property
-    def Body(self):
-        return self.body
+        self.sender_name = sender_name
 
 
 class TestSearchRuleEngine:

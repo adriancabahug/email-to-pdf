@@ -34,7 +34,11 @@ class TestBrowserRecycling:
         assert result is True
         assert gen._pdf_count == 1
 
-    def test_pdf_count_increments_on_file_method(self):
+    def test_pdf_count_increments_on_file_method(self, tmp_path):
+        html_file = tmp_path / "input.html"
+        html_file.write_text("<html><body>Test</body></html>", encoding="utf-8")
+        out_file = tmp_path / "output.pdf"
+
         gen = PDFGenerator(recycle_threshold=5)
         gen._browser = MagicMock()
         gen._playwright = MagicMock()
@@ -42,7 +46,7 @@ class TestBrowserRecycling:
         page_mock = MagicMock()
         gen._browser.new_page.return_value = page_mock
 
-        result = gen.generate_pdf_from_file("input.html", "output.pdf")
+        result = gen.generate_pdf_from_file(str(html_file), str(out_file))
 
         assert result is True
         assert gen._pdf_count == 1

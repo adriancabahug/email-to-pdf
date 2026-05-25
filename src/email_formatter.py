@@ -81,14 +81,15 @@ class AttachmentHandler:
 
     def extract(self, email: Any) -> List[dict]:
         attachments = []
+        com_item = getattr(email, '_com_item', email)
 
         try:
-            if not hasattr(email, "Attachments"):
+            if not hasattr(com_item, "Attachments"):
                 return attachments
 
-            for i in range(1, email.Attachments.Count + 1):
+            for i in range(1, com_item.Attachments.Count + 1):
                 try:
-                    attachment = email.Attachments.Item(i)
+                    attachment = com_item.Attachments.Item(i)
 
                     should_embed, reason = self._should_embed(attachment)
 
@@ -100,9 +101,7 @@ class AttachmentHandler:
 
                     try:
                         schema = "http://schemas.microsoft.com/mapi/proptag/0x370E001F"
-
                         mime_type = attachment.PropertyAccessor.GetProperty(schema)
-
                     except Exception:
                         pass
 
@@ -206,19 +205,19 @@ class EmailFormatter:
 
     def format_email(self, email: Any, include_attachments: bool = True) -> str:
 
-        sender_name = getattr(email, "SenderName", "")
-        sender_email = getattr(email, "SenderEmailAddress", "")
+        sender_name = email.sender_name
+        sender_email = email.sender_email
 
-        to_recipients = getattr(email, "To", "")
-        cc_recipients = getattr(email, "CC", "")
-        bcc_recipients = getattr(email, "BCC", "")
+        to_recipients = email.to_recipients
+        cc_recipients = email.cc_recipients
+        bcc_recipients = email.bcc_recipients
 
-        subject = getattr(email, "Subject", "")
+        subject = email.subject
 
-        html_body = getattr(email, "HTMLBody", None)
-        plain_body = getattr(email, "Body", "")
+        html_body = email.html_body
+        plain_body = email.body
 
-        sent_on = getattr(email, "SentOn", "")
+        sent_on = email.sent_on
 
         from_field = f"{sender_name} <{sender_email}>" if sender_email else sender_name
 
@@ -263,7 +262,8 @@ class EmailFormatter:
 """
 
     def _format_attachments(self, email: Any) -> str:
-        attachments = self._attachment_handler.extract(email)
+        com_item = getattr(email, '_com_item', email)
+        attachments = self._attachment_handler.extract(com_item)
 
         if not attachments:
             return ""
@@ -306,14 +306,10 @@ class EmailFormatter:
     def format_multiple_emails(self, emails: List[Any]) -> str:
 
         def sort_key(e):
-            t = getattr(e, "SentOn", None)
-
-            if isinstance(t, datetime):
-                return t
-
+            if isinstance(e.sent_on, datetime):
+                return e.sent_on
             try:
-                return datetime.fromisoformat(str(t).split("+")[0])
-
+                return datetime.fromisoformat(str(e.sent_on).split("+")[0])
             except Exception:
                 return datetime.min
 

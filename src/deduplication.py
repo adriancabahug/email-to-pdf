@@ -31,38 +31,31 @@ class CrossMailboxDeduplicator:
         return self._get_fallback_key(email)
 
     def _get_internet_message_id(self, email: Any) -> Optional[str]:
-        prop = getattr(email, "InternetMessageID", None)
-        if prop:
-            return str(prop).strip().strip("<>")
+        if email.internet_message_id:
+            return email.internet_message_id.strip("<>")
         return None
 
     def _get_fallback_key(self, email: Any) -> str:
         parts = []
 
-        sender = getattr(email, "SenderEmailAddress", None)
-        if sender:
-            parts.append(f"sender:{str(sender).lower()}")
+        if email.sender_email:
+            parts.append(f"sender:{email.sender_email.lower()}")
 
-        subject = getattr(email, "Subject", None)
-        if subject:
-            normalized = self._normalize_subject(str(subject))
+        if email.subject:
+            normalized = self._normalize_subject(email.subject)
             parts.append(f"subject:{normalized}")
 
-        body = getattr(email, "Body", None)
-        if body:
-            body_hash = hashlib.md5(str(body).encode('utf-8')).hexdigest()
+        if email.body:
+            body_hash = hashlib.md5(email.body.encode('utf-8')).hexdigest()
             parts.append(f"body:{body_hash}")
 
-        sent_on = getattr(email, "SentOn", None)
-        if sent_on:
-            if isinstance(sent_on, datetime):
-                ts = sent_on.replace(second=0, microsecond=0)
-                parts.append(f"time:{ts.isoformat()}")
+        if email.sent_on and isinstance(email.sent_on, datetime):
+            ts = email.sent_on.replace(second=0, microsecond=0)
+            parts.append(f"time:{ts.isoformat()}")
 
         if not parts:
-            entry_id = getattr(email, "EntryID", None)
-            if entry_id:
-                return f"entry:{entry_id}"
+            if email.entry_id:
+                return f"entry:{email.entry_id}"
             return f"unknown:{id(email)}"
 
         return "|".join(parts)
