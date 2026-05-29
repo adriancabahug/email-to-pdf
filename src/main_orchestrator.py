@@ -237,10 +237,12 @@ class MainOrchestrator:
             had_body_scan = any(len(t) >= 5 for t in all_terms)
 
             if self._search_engine and self._advisor_matcher:
+                director_emails = [t for t in ctx.search_terms if "@" in t]
+                director_names = [t for t in ctx.search_terms if "@" not in t]
                 new_smsf_ctx = NewSMSFContext(
                     smsf_name=ctx.smsf,
-                    director_names=ctx.search_terms,
-                    director_emails=[],
+                    director_names=director_names,
+                    director_emails=director_emails,
                     advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
                 )
 
@@ -263,10 +265,12 @@ class MainOrchestrator:
                     emails = self._deduplicator.deduplicate(emails)
 
             if self._pdf_grouper and self._advisor_matcher and self._search_engine:
+                director_emails = [t for t in ctx.search_terms if "@" in t]
+                director_names = [t for t in ctx.search_terms if "@" not in t]
                 new_smsf_ctx = NewSMSFContext(
                     smsf_name=ctx.smsf,
-                    director_names=ctx.search_terms,
-                    director_emails=[],
+                    director_names=director_names,
+                    director_emails=director_emails,
                     advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
                 )
                 groups = self._pdf_grouper.group_emails(
@@ -448,10 +452,12 @@ class AsyncPipelineOrchestrator:
 
                 # Score relevance
                 if self._search_engine and self._advisor_matcher:
+                    director_emails = [t for t in ctx.search_terms if "@" in t]
+                    director_names = [t for t in ctx.search_terms if "@" not in t]
                     new_ctx = NewSMSFContext(
                         smsf_name=ctx.smsf,
-                        director_names=ctx.search_terms,
-                        director_emails=[],
+                        director_names=director_names,
+                        director_emails=director_emails,
                         advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
                     )
                     emails = [
@@ -474,10 +480,12 @@ class AsyncPipelineOrchestrator:
                 # Group by advisor
                 groups = None
                 if self._pdf_grouper and self._advisor_matcher and self._search_engine:
+                    director_emails = [t for t in ctx.search_terms if "@" in t]
+                    director_names = [t for t in ctx.search_terms if "@" not in t]
                     new_ctx = NewSMSFContext(
                         smsf_name=ctx.smsf,
-                        director_names=ctx.search_terms,
-                        director_emails=[],
+                        director_names=director_names,
+                        director_emails=director_emails,
                         advisor_domains=list(self._advisor_matcher._domain_to_org.keys()),
                     )
                     groups = self._pdf_grouper.group_emails(

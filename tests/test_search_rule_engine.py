@@ -213,3 +213,125 @@ class TestSearchRuleEngine:
 
         result = engine.is_relevant(email, context)
         assert result == RelevanceLevel.STRONG
+
+    def test_medium_when_director_email_in_from(self):
+        context = SMSFContext(
+            smsf_name="SOULBAILA",
+            director_names=[],
+            director_emails=["martinez.matias.alejandro@gmail.com"],
+            advisor_domains=["ventasadvisory.com.au"],
+        )
+        matcher = AdvisorDomainMatcher()
+        engine = SearchRuleEngine(matcher)
+
+        email = FakeEmail(
+            sender_email="martinez.matias.alejandro@gmail.com",
+            to_recipients="admin@eastcoastinc.com.au",
+            subject="SOULBAILA query",
+            body="Hi team",
+        )
+
+        result = engine.is_relevant(email, context)
+        assert result == RelevanceLevel.MEDIUM
+
+    def test_medium_when_director_email_in_to(self):
+        context = SMSFContext(
+            smsf_name="SOULBAILA",
+            director_names=[],
+            director_emails=["martinez.matias.alejandro@gmail.com"],
+            advisor_domains=["ventasadvisory.com.au"],
+        )
+        matcher = AdvisorDomainMatcher()
+        engine = SearchRuleEngine(matcher)
+
+        email = FakeEmail(
+            sender_email="admin@eastcoastinc.com.au",
+            to_recipients="martinez.matias.alejandro@gmail.com",
+            subject="RE: SOULBAILA query",
+            body="Sure, we'll look into it",
+        )
+
+        result = engine.is_relevant(email, context)
+        assert result == RelevanceLevel.MEDIUM
+
+    def test_medium_when_director_email_in_cc(self):
+        context = SMSFContext(
+            smsf_name="SOULBAILA",
+            director_names=[],
+            director_emails=["martinez.matias.alejandro@gmail.com"],
+            advisor_domains=["ventasadvisory.com.au"],
+        )
+        matcher = AdvisorDomainMatcher()
+        engine = SearchRuleEngine(matcher)
+
+        email = FakeEmail(
+            sender_email="advisor@ventasadvisory.com.au",
+            to_recipients="admin@eastcoastinc.com.au",
+            cc_recipients="martinez.matias.alejandro@gmail.com",
+            subject="SOULBAILA update",
+            body="Please action",
+        )
+
+        result = engine.is_relevant(email, context)
+        assert result == RelevanceLevel.STRONG
+
+    def test_medium_when_director_name_in_sender_name(self):
+        context = SMSFContext(
+            smsf_name="SOULBAILA",
+            director_names=["Matias Martinez"],
+            director_emails=[],
+            advisor_domains=["ventasadvisory.com.au"],
+        )
+        matcher = AdvisorDomainMatcher()
+        engine = SearchRuleEngine(matcher)
+
+        email = FakeEmail(
+            sender_email="some.other@gmail.com",
+            to_recipients="admin@eastcoastinc.com.au",
+            subject="SOULBAILA documents",
+            body="Attached",
+            sender_name="Matias Martinez",
+        )
+
+        result = engine.is_relevant(email, context)
+        assert result == RelevanceLevel.MEDIUM
+
+    def test_medium_when_director_email_in_body(self):
+        context = SMSFContext(
+            smsf_name="SOULBAILA",
+            director_names=[],
+            director_emails=["martinez.matias.alejandro@gmail.com"],
+            advisor_domains=["ventasadvisory.com.au"],
+        )
+        matcher = AdvisorDomainMatcher()
+        engine = SearchRuleEngine(matcher)
+
+        email = FakeEmail(
+            sender_email="admin@eastcoastinc.com.au",
+            to_recipients="other@eastcoastinc.com.au",
+            subject="FW: SOULBAILA docs",
+            body="Please forward to martinez.matias.alejandro@gmail.com for signature",
+        )
+
+        result = engine.is_relevant(email, context)
+        assert result == RelevanceLevel.MEDIUM
+
+    def test_medium_when_director_name_in_body(self):
+        context = SMSFContext(
+            smsf_name="SOULBAILA",
+            director_names=["Matias"],
+            director_emails=[],
+            advisor_domains=["ventasadvisory.com.au"],
+        )
+        matcher = AdvisorDomainMatcher()
+        engine = SearchRuleEngine(matcher)
+
+        email = FakeEmail(
+            sender_email="staff@eastcoastinc.com.au",
+            to_recipients="colleague@eastcoastinc.com.au",
+            subject="Internal note",
+            body="Please contact Matias regarding SOULBAILA",
+        )
+
+        result = engine.is_relevant(email, context)
+        assert result == RelevanceLevel.MEDIUM

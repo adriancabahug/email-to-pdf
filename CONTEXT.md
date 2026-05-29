@@ -13,10 +13,10 @@ A financial professional or firm that corresponds with SMSF directors. Advisors 
 An email domain that identifies a particular advisory firm or practice (e.g. `@accounting.com`, `@ventas.com`). Advisor domains are mapped to organization names and used to group emails into per-advisor PDFs.
 
 ## Email Extraction
-The process of reading emails from Microsoft Outlook via the win32com (COM) API. Must run on the main thread due to STA threading requirements.
+The process of reading emails from Microsoft Outlook. Outlook must be installed and running on the same Windows machine.
 
 ## PDF Rendering
-Converting formatted email HTML into PDF files using Playwright (Chromium headless browser). Available in both synchronous (`PDFGenerator`) and asynchronous (`AsyncPDFGenerator`) variants.
+Converting formatted email HTML into PDF files using a browser engine to ensure pixel-perfect fidelity of complex HTML email content.
 
 ## Pipeline Stage
 A discrete processing step in the email-to-PDF workflow: Search → Relevance Filtering → Deduplication → Advisor Grouping → Formatting → PDF Generation.

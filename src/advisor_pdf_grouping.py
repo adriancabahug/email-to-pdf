@@ -21,25 +21,34 @@ class AdvisorPDFGroupingEngine:
         context: SMSFContext,
         matcher: AdvisorDomainMatcher,
     ) -> Dict[str, List[Any]]:
-        relevant_emails = [
-            e for e in emails
-            if self._search_engine.is_relevant(e, context) == RelevanceLevel.STRONG
-        ]
+        groups: Dict[str, List[Any]] = {}
 
-        org_groups: Dict[str, List[Any]] = {}
+        strong_emails = []
+        medium_emails = []
 
-        for email in relevant_emails:
+        for email in emails:
+            level = self._search_engine.is_relevant(email, context)
+            if level == RelevanceLevel.STRONG:
+                strong_emails.append(email)
+            elif level == RelevanceLevel.MEDIUM:
+                medium_emails.append(email)
+
+        for email in strong_emails:
             org = self._get_advisor_organization(email, matcher)
             if org:
                 key = f"{org.name} - {context.smsf_name}"
-                if key not in org_groups:
-                    org_groups[key] = []
-                org_groups[key].append(email)
+                if key not in groups:
+                    groups[key] = []
+                groups[key].append(email)
 
-        for key in org_groups:
-            org_groups[key] = self._sort_chronologically(org_groups[key])
+        if medium_emails:
+            key = f"Director Correspondence - {context.smsf_name}"
+            groups[key] = medium_emails
 
-        return org_groups
+        for key in groups:
+            groups[key] = self._sort_chronologically(groups[key])
+
+        return groups
 
     def _get_advisor_organization(self, email: Any, matcher: AdvisorDomainMatcher) -> Any:
         all_addresses = f"{email.sender_email} {email.to_recipients} {email.cc_recipients}"

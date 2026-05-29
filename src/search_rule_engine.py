@@ -4,6 +4,7 @@ Optimized to avoid double body scanning when email_searcher already checked it.
 """
 
 import enum
+import re
 from typing import Any, Optional
 
 from src.smsf_context import SMSFContext
@@ -27,26 +28,18 @@ class SearchRuleEngine:
         context: SMSFContext,
         body_already_scanned: bool = False,
     ) -> RelevanceLevel:
-        """
-        Determine if an email is relevant to the SMSF evidence pack.
-
-        Args:
-            email: The Outlook email object
-            context: SMSF context with names, emails, advisor domains
-            body_already_scanned: If True, skip body check (email_searcher did it)
-
-        Returns:
-            RelevanceLevel: STRONG, MEDIUM, WEAK, or NONE
-        """
         has_advisor = self._has_advisor_domain(email, context)
         has_smsf_context = self._has_smsf_context(
             email, context, skip_body=body_already_scanned
         )
+        has_director = self._has_director_participation(email, context)
 
         if has_advisor and has_smsf_context:
             return RelevanceLevel.STRONG
         elif has_advisor and not has_smsf_context:
             return RelevanceLevel.WEAK
+        elif has_director:
+            return RelevanceLevel.MEDIUM
 
         return RelevanceLevel.NONE
 
@@ -57,12 +50,37 @@ class SearchRuleEngine:
 
         all_addresses = f"{sender} {to} {cc}"
 
-        import re
         addresses = re.findall(r'[\w\.\-]+@[\w\.\-]+', all_addresses.lower())
 
         for addr in addresses:
             if self._matcher.match(addr):
                 return True
+
+        return False
+
+    def _has_director_participation(self, email: Any, context: SMSFContext) -> bool:
+        sender_email = self._get_sender_email(email)
+        to = self._get_to_recipients(email)
+        cc = self._get_cc_recipients(email)
+        all_addresses = f"{sender_email} {to} {cc}".lower()
+
+        for director_email in context.director_emails:
+            if director_email.lower() in all_addresses:
+                return True
+
+        sender_name = (email.sender_name or "").lower()
+        for name in context.director_names:
+            if name.lower() in sender_name:
+                return True
+
+        if email.body:
+            body_text = email.body.lower()
+            for director_email in context.director_emails:
+                if director_email.lower() in body_text:
+                    return True
+            for name in context.director_names:
+                if name.lower() in body_text:
+                    return True
 
         return False
 
